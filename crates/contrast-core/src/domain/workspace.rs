@@ -54,4 +54,13 @@ impl Workspace {
         self.focus_history.retain(|w| *w != id);
         self.focus_history.push(id);
     }
+
+    /// フォーカス履歴の最新。なければ順序列の先頭。どちらもなければ `None`（D12）。
+    #[must_use]
+    pub fn preferred_focus(&self) -> Option<WindowId> {
+        self.focus_history
+            .last()
+            .or_else(|| self.windows.first())
+            .copied()
+    }
 }

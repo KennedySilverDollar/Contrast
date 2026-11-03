@@ -4,7 +4,7 @@
 //! `application/handlers/` が行う。
 //!
 //! 守る不変条件（操作ごとに保つもの。検査は `invariant.rs`）:
-//! - I1 / I2 窓の所属（`Window::workspace`）と順序列を `remove_window` などで同時に更新する。
+//! - I1 / I2 窓の所属（`Window::workspace`）と順序列を `move_window_to` / `remove_window` で同時に更新する。
 //! - I3 ワークスペース数は固定（D1）。
 //! - I4 フォーカスは `set_focus` だけが変え、履歴も同時に更新する。
 //! - I6 ID は `IdGen` から払い出し、対応表は `KeyMap` で持つ。
@@ -118,6 +118,22 @@ impl State {
         };
         if let Some(ws) = self.workspace_mut(index) {
             ws.record_focus(id);
+        }
+    }
+
+    /// 窓をワークスペース `to` の順序列末尾へ移す（I1・I2 を保つ）。
+    pub fn move_window_to(&mut self, id: WindowId, to: WorkspaceIndex) {
+        let Some(from) = self.windows.get(&id).map(|w| w.workspace) else {
+            return;
+        };
+        if let Some(ws) = self.workspace_mut(from) {
+            ws.remove_window(id);
+        }
+        if let Some(ws) = self.workspace_mut(to) {
+            ws.push_window(id);
+        }
+        if let Some(w) = self.windows.get_mut(&id) {
+            w.workspace = to;
         }
     }
 

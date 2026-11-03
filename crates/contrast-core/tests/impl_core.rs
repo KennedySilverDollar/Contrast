@@ -8,8 +8,9 @@
 #[cfg(feature = "invariants")]
 mod core_impl {
     use contrast_core::{
-        Columns, Command, Core, CoreConfig, CoreError, DefaultPolicy, Effect, EntityId,
-        ExternalKey, OutputId, OutputName, Rect, WindowId, WindowMeta, WindowState,
+        Action, Columns, Command, Core, CoreConfig, CoreError, DefaultPolicy, Direction, Effect,
+        EntityId, ExternalKey, OutputId, OutputName, Rect, WindowId, WindowMeta, WindowState,
+        WorkspaceIndex,
     };
 
     /// テスト対象の Core（コンポジタと同じくワークスペース 4 個）。
@@ -265,5 +266,193 @@ mod core_impl {
         assert_eq!(w.rect, Some(rect(232, 269, 464, 538)));
         // Tiled 窓は 1 枚分のまま。
         assert_eq!(rect_of(&c, 1), rect(0, 0, 928, 1076));
+    }
+
+    /// Action を適用する。
+    fn act(core: &mut TestCore, action: Action) -> Vec<Effect> {
+        apply(core, Command::Action(action))
+    }
+
+    /// 出力 1 つと窓 1・2・3 を持つ Core（フォーカスは 3）。
+    fn three_windows() -> TestCore {
+        let mut c = core_with_output();
+        map(&mut c, 1);
+        map(&mut c, 2);
+        map(&mut c, 3);
+        c
+    }
+
+    /// ワークスペース `n` の順序列をキーの番号で返す。
+    fn order(core: &TestCore, n: u8) -> Vec<WindowId> {
+        core.view()
+            .workspace_windows(WorkspaceIndex::new(n))
+            .expect("workspace")
+            .to_vec()
+    }
+
+    #[test]
+    fn focus_request_moves_focus_and_unmap_focuses_right_neighbor() {
+        let mut c = three_windows();
+        let effects = apply(&mut c, Command::WindowFocusRequested(win(2)));
+        assert_eq!(c.view().focus(), Some(id(&c, 2)));
+        assert!(effects.contains(&Effect::SetFocus(Some(id(&c, 2)))));
+        apply(&mut c, Command::WindowUnmapped(win(2)));
+        assert_eq!(c.view().focus(), Some(id(&c, 3)));
+        assert_eq!(rect_of(&c, 1), rect(0, 0, 464, 1076));
+        assert_eq!(rect_of(&c, 3), rect(464, 0, 464, 1076));
+    }
+
+    #[test]
+    fn focus_request_on_hidden_window_is_noop() {
+        let mut c = core_with_output();
+        map(&mut c, 1);
+        act(&mut c, Action::SwitchWorkspace(WorkspaceIndex::new(1)));
+        map(&mut c, 2);
+        let before = c.snapshot();
+        let effects = apply(&mut c, Command::WindowFocusRequested(win(1)));
+        assert!(effects.is_empty());
+        assert_eq!(c.snapshot(), before);
+        assert_eq!(
+            c.apply(Command::WindowFocusRequested(win(99))),
+            Err(CoreError::UnknownKey)
+        );
+    }
+
+    #[test]
+    fn focus_direction_moves_to_nearest_and_stops_at_edge() {
+        let mut c = three_windows();
+        act(&mut c, Action::FocusDirection(Direction::Left));
+        assert_eq!(c.view().focus(), Some(id(&c, 2)));
+        act(&mut c, Action::FocusDirection(Direction::Left));
+        assert_eq!(c.view().focus(), Some(id(&c, 1)));
+        let effects = act(&mut c, Action::FocusDirection(Direction::Left));
+        assert!(effects.is_empty());
+        assert_eq!(c.view().focus(), Some(id(&c, 1)));
+        act(&mut c, Action::FocusDirection(Direction::Right));
+        assert_eq!(c.view().focus(), Some(id(&c, 2)));
+        // 上下には候補が無い。
+        assert!(act(&mut c, Action::FocusDirection(Direction::Up)).is_empty());
+    }
+
+    #[test]
+    fn actions_needing_focus_fail_without_it() {
+        let mut c = core_with_output();
+        let before = c.snapshot();
+        for action in [
+            Action::FocusDirection(Direction::Left),
+            Action::MoveWindow(Direction::Right),
+            Action::MoveToWorkspace(WorkspaceIndex::new(1)),
+            Action::ToggleFloating,
+            Action::ToggleFullscreen,
+            Action::CloseFocused,
+        ] {
+            assert_eq!(
+                c.apply(Command::Action(action)),
+                Err(CoreError::NoFocusedWindow)
+            );
+        }
+        assert_eq!(c.snapshot(), before);
+    }
+
+    #[test]
+    fn move_window_swaps_with_tiled_neighbor() {
+        let mut c = three_windows();
+        apply(&mut c, Command::WindowFocusRequested(win(1)));
+        act(&mut c, Action::MoveWindow(Direction::Right));
+        assert_eq!(order(&c, 0), vec![id(&c, 2), id(&c, 1), id(&c, 3)]);
+        assert_eq!(rect_of(&c, 1), rect(310, 0, 309, 1076));
+        act(&mut c, Action::MoveWindow(Direction::Left));
+        assert_eq!(order(&c, 0), vec![id(&c, 1), id(&c, 2), id(&c, 3)]);
+        // 端では何もしない。
+        assert!(act(&mut c, Action::MoveWindow(Direction::Left)).is_empty());
+    }
+
+    #[test]
+    fn switch_workspace_shows_and_restores_focus() {
+        let mut c = three_windows();
+        apply(&mut c, Command::WindowFocusRequested(win(2)));
+        let out = c.view().output_id(OUT).expect("output");
+        let effects = act(&mut c, Action::SwitchWorkspace(WorkspaceIndex::new(1)));
+        assert!(
+            matches!(effects.first(), Some(Effect::ShowWorkspace { output, .. }) if *output == out)
+        );
+        assert!(effects.contains(&Effect::SetFocus(None)));
+        assert!(!c.view().window(id(&c, 1)).expect("w1").visible);
+        map(&mut c, 4);
+        assert_eq!(
+            c.view().window(id(&c, 4)).map(|w| w.workspace.get()),
+            Some(1)
+        );
+        act(&mut c, Action::SwitchWorkspace(WorkspaceIndex::new(0)));
+        // ワークスペース 0 で最後にフォーカスしていた窓へ戻る。
+        assert_eq!(c.view().focus(), Some(id(&c, 2)));
+        assert_eq!(c.view().visible_windows().len(), 3);
+    }
+
+    #[test]
+    fn switch_workspace_accepts_all_four_and_rejects_out_of_range() {
+        let mut c = core_with_output();
+        let out = c.view().output_id(OUT).expect("output");
+        for n in [1u8, 2, 3, 0] {
+            act(&mut c, Action::SwitchWorkspace(WorkspaceIndex::new(n)));
+            assert_eq!(c.view().shown_workspace(out), Some(WorkspaceIndex::new(n)));
+        }
+        let before = c.snapshot();
+        assert_eq!(
+            c.apply(Command::Action(Action::SwitchWorkspace(
+                WorkspaceIndex::new(4)
+            ))),
+            Err(CoreError::WorkspaceIndexOutOfRange)
+        );
+        assert_eq!(c.snapshot(), before);
+        // 表示中のワークスペースへの切替は何もしない。
+        assert!(act(&mut c, Action::SwitchWorkspace(WorkspaceIndex::new(0))).is_empty());
+    }
+
+    #[test]
+    fn move_to_workspace_leaves_focus_behind() {
+        let mut c = three_windows();
+        apply(&mut c, Command::WindowFocusRequested(win(2)));
+        act(&mut c, Action::MoveToWorkspace(WorkspaceIndex::new(1)));
+        assert_eq!(order(&c, 0), vec![id(&c, 1), id(&c, 3)]);
+        assert_eq!(order(&c, 1), vec![id(&c, 2)]);
+        assert_eq!(c.view().focus(), Some(id(&c, 1)));
+        assert_eq!(rect_of(&c, 3), rect(464, 0, 464, 1076));
+        act(&mut c, Action::SwitchWorkspace(WorkspaceIndex::new(1)));
+        assert_eq!(c.view().focus(), Some(id(&c, 2)));
+        assert_eq!(rect_of(&c, 2), rect(0, 0, 928, 1076));
+    }
+
+    #[test]
+    fn toggle_floating_and_fullscreen() {
+        let mut c = three_windows();
+        act(&mut c, Action::ToggleFloating);
+        let w3 = c.view().window(id(&c, 3)).expect("w3");
+        assert_eq!(w3.state, WindowState::Floating);
+        assert_eq!(rect_of(&c, 2), rect(464, 0, 464, 1076));
+        act(&mut c, Action::ToggleFullscreen);
+        assert_eq!(rect_of(&c, 3), rect(0, 0, 928, 1076));
+        // 別の窓を全画面にすると、先の全画面は元の状態（Floating）に戻る。
+        apply(&mut c, Command::WindowFocusRequested(win(1)));
+        act(&mut c, Action::ToggleFullscreen);
+        let states: Vec<WindowState> = [1, 3]
+            .iter()
+            .map(|n| c.view().window(id(&c, *n)).expect("w").state)
+            .collect();
+        assert_eq!(states, vec![WindowState::Fullscreen, WindowState::Floating]);
+        act(&mut c, Action::ToggleFullscreen);
+        assert_eq!(
+            c.view().window(id(&c, 1)).expect("w1").state,
+            WindowState::Tiled
+        );
+    }
+
+    #[test]
+    fn close_focused_only_requests_close() {
+        let mut c = three_windows();
+        let before = c.snapshot();
+        let effects = act(&mut c, Action::CloseFocused);
+        assert_eq!(effects, vec![Effect::RequestClose(id(&c, 3))]);
+        assert_eq!(c.snapshot(), before);
     }
 }

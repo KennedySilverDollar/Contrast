@@ -3,16 +3,24 @@
 //! handler は複製された `State` を `&mut` で受け、Registered / RequestClose だけを返す。
 //! 再配置と残りの Effect は `Core::apply` が行う。Err を返したら複製は捨てられる（I7）。
 
+mod close_focused;
+mod focus_direction;
+mod move_to_workspace;
+mod move_window;
 mod output_added;
 mod output_changed;
 mod output_removed;
+mod switch_workspace;
+mod toggle_floating;
+mod toggle_fullscreen;
+mod window_focus_requested;
 mod window_mapped;
 mod window_meta_changed;
 mod window_unmapped;
 
 use alloc::vec::Vec;
 
-use crate::application::command::Command;
+use crate::application::command::{Action, Command};
 use crate::application::effect::Effect;
 use crate::domain::id::WorkspaceIndex;
 use crate::domain::state::State;
@@ -40,9 +48,33 @@ pub fn dispatch<P: Policy>(
         Command::WindowMapped { key, meta } => window_mapped::handle(state, policy, key, meta),
         Command::WindowUnmapped(key) => window_unmapped::handle(state, key),
         Command::WindowMetaChanged { key, meta } => window_meta_changed::handle(state, key, meta),
-        // C2 で実装する。
-        Command::WindowFocusRequested(_) | Command::Action(_) => Ok(Vec::new()),
+        Command::WindowFocusRequested(key) => window_focus_requested::handle(state, key),
+        Command::Action(action) => dispatch_action(state, action),
     }
+}
+
+/// Action を対応する handler に振り分ける。
+///
+/// # Errors
+/// 各 handler の `CoreError`。
+fn dispatch_action(state: &mut State, action: Action) -> Result<Vec<Effect>, CoreError> {
+    match action {
+        Action::FocusDirection(direction) => focus_direction::handle(state, direction),
+        Action::MoveWindow(direction) => move_window::handle(state, direction),
+        Action::SwitchWorkspace(index) => switch_workspace::handle(state, index),
+        Action::MoveToWorkspace(index) => move_to_workspace::handle(state, index),
+        Action::ToggleFloating => toggle_floating::handle(state),
+        Action::ToggleFullscreen => toggle_fullscreen::handle(state),
+        Action::CloseFocused => close_focused::handle(state),
+    }
+}
+
+/// フォーカス窓。対象窓が必要な Action で使う。
+///
+/// # Errors
+/// フォーカスが None なら `NoFocusedWindow`。
+fn focused(state: &State) -> Result<crate::domain::id::WindowId, CoreError> {
+    state.focus.ok_or(CoreError::NoFocusedWindow)
 }
 
 /// `index` が範囲内か確かめる。

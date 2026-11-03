@@ -129,3 +129,29 @@ Claude Code はここに追記する。人間が回答したら「回答:」行�
   交差していればそのまま保つ。(b) 与えない（フォーカスは None のまま）。
 - 止めた作業: なし
 - 回答: （人間が記入）
+
+### Q11 (proto) Fullscreen の窓に ToggleFloating したとき、などの Action の端の扱い
+- 該当箇所: `docs/core-spec.md` 5 節 Action、D9・D11〜D13
+- 疑問と暫定（proto/core-wire で実装したもの）:
+  - ToggleFloating を Fullscreen の窓に送ったとき → 状態不変で `Ok`。
+  - SwitchWorkspace を出力 0 台で送ったとき、表示中のワークスペースを指定したとき → 状態不変で `Ok`。
+  - MoveToWorkspace で今いるワークスペースを指定したとき → 状態不変で `Ok`。
+  - MoveWindow の「1 つ前 / 後」は、順序列のうち Tiled 窓だけを数える（Floating は飛ばす）。
+  - MoveToWorkspace で全画面窓を、全画面窓のあるワークスペースへ移したとき → 移した側を残し、先にいた側を元の状態に戻す。
+  - FocusDirection / MoveWindow / MoveToWorkspace / Toggle* / CloseFocused はフォーカスが None なら
+    `NoFocusedWindow`（6 節）。シェルはログだけ出す。プロトタイプの「何もしない」と見た目は同じ。
+- 止めた作業: なし
+- 回答: （人間が記入）
+
+### Q12 (proto) 仕様 5 節への Command::WindowFocusRequested の追記（追記できず保留）
+- 該当箇所: `docs/core-spec.md` 5 節
+- 疑問: 指示では 5 節に追記することになっていたが、`.claude/settings.json` の deny に
+  `Edit(./docs/core-spec.md)` があり、編集できなかった。設定を迂回しての書き込みはしていない。
+- 追記案（人間が反映してほしい文面）:
+  - `Command` に `WindowFocusRequested(ExternalKey),` を足す（`WindowMetaChanged` の次）。
+  - 5 節の末尾に次を足す:
+    「`WindowFocusRequested(key)` はクリックなどによるフォーカス要求（proto で追加）。窓が表示中のワークスペースに
+    あるときだけフォーカスを移し、フォーカス履歴を更新する。表示されていなければ状態不変で `Ok`（Effect 空）。
+    key が未登録なら `UnknownKey`。」
+- 止めた作業: core-spec.md の編集のみ（実装とテストは済み）
+- 回答: （人間が記入）
