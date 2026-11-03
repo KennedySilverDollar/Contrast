@@ -57,17 +57,29 @@ impl Contrast {
         self.focus_window(Some(&window));
     }
 
-    /// surface の窓を管理から外し、並べ直す。フォーカスを失ったら同じワークスペースの別の窓へ。
+    /// surface の窓を管理から外し、並べ直す。
+    ///
+    /// クライアントが自分で終了した場合も toplevel_destroyed 経由でここに来る。
+    /// フォーカスを失ったら、表示中の並びで隣の窓（右隣、末尾だったなら左隣）へ移す。
     pub fn remove_window(&mut self, surface: &WlSurface) {
         let Some(index) = self.index_of_surface(surface) else {
             return;
         };
+        let position = self
+            .visible_windows()
+            .iter()
+            .position(|w| *w == self.windows[index].window);
         let removed = self.windows.remove(index);
         tracing::info!(window = removed.id, "window removed");
         self.space.unmap_elem(&removed.window);
         self.relayout();
         if self.focused_index().is_none() {
-            self.focus_window(self.most_recent_visible().as_ref());
+            let visible = self.visible_windows();
+            let neighbor = position
+                .and_then(|p| visible.get(p).or_else(|| visible.last()))
+                .cloned()
+                .or_else(|| self.most_recent_visible());
+            self.focus_window(neighbor.as_ref());
         }
     }
 
@@ -169,6 +181,6 @@ impl Contrast {
         }
         let keyboard = self.seat.get_keyboard().expect("seat has keyboard");
         keyboard.set_focus(self, surface, serial);
-        tracing::info!(window = ?focused_id, "focus");
+        tracing::info!("focus window={}", crate::handler::fmt_id(focused_id));
     }
 }

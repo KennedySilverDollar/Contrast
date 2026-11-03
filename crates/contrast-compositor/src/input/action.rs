@@ -10,9 +10,11 @@ impl Contrast {
         match action {
             Action::Spawn(program) => self.spawn(&program),
             Action::CloseFocused => {
+                // フォーカス窓が無ければ何もしない。窓が実際に閉じたときの並べ直しと
+                // フォーカス移動は toplevel_destroyed → `remove_window` が行う。
                 if let Some(index) = self.focused_index() {
                     let m = &self.windows[index];
-                    tracing::info!(window = m.id, "close requested");
+                    tracing::info!("close focused window={}", m.id);
                     m.window.toplevel().expect("wayland toplevel").send_close();
                 }
             }

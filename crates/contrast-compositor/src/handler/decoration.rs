@@ -27,9 +27,9 @@ impl Contrast {
     }
 }
 
-/// ログ用に窓の通し番号を書く（未管理なら `?`）。
+/// ログ用に窓の通し番号を書く（窓が無い・未管理なら `none`）。
 pub fn fmt_id(id: Option<u64>) -> String {
-    id.map_or_else(|| "?".to_string(), |id| id.to_string())
+    id.map_or_else(|| "none".to_string(), |id| id.to_string())
 }
 
 impl XdgDecorationHandler for Contrast {

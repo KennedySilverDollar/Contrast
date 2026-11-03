@@ -41,13 +41,23 @@ impl Contrast {
         })
     }
 
-    /// 座標の下の窓にフォーカスを移す。窓が無ければ何もしない。
+    /// 座標の下の窓にフォーカスを移す。窓の外（空き領域）なら何もしない。
     pub fn focus_at(&mut self, pos: Point<f64, Logical>) {
-        let window = self.space.element_under(pos).map(|(w, _)| w.clone());
-        if let Some(window) = window {
-            tracing::info!(x = pos.x, y = pos.y, "click focus");
-            self.focus_window(Some(&window));
-        }
+        let Some(window) = self.space.element_under(pos).map(|(w, _)| w.clone()) else {
+            return;
+        };
+        let id = self
+            .windows
+            .iter()
+            .find(|m| m.window == window)
+            .map(|m| m.id);
+        tracing::info!(
+            "click focus window={} x={} y={}",
+            crate::handler::fmt_id(id),
+            pos.x,
+            pos.y
+        );
+        self.focus_window(Some(&window));
     }
 
     /// winit からの入力イベントを 1 つ処理する。
