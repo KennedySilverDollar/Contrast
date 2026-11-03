@@ -3,6 +3,7 @@
 use std::{ffi::OsString, sync::Arc};
 
 use smithay::{
+    backend::renderer::element::solid::SolidColorBuffer,
     desktop::{PopupManager, Space, Window},
     input::{Seat, SeatState, keyboard::Keycode},
     reexports::{
@@ -48,6 +49,8 @@ pub struct Contrast {
     pub active_ws: u8,
     /// フォーカス順の刻み。
     pub focus_counter: u64,
+    /// フォーカス枠の四辺（上・下・左・右）。Id を保って描画の差分追跡を効かせる。
+    pub border_buffers: [SolidColorBuffer; 4],
     /// キーバインドとして握りつぶした押下中のキー（離したときも素通ししない）。
     pub suppressed_keys: Vec<Keycode>,
 
@@ -96,6 +99,7 @@ impl Contrast {
             next_id: 0,
             active_ws: 0,
             focus_counter: 0,
+            border_buffers: Default::default(),
             suppressed_keys: Vec::new(),
             xdg_shell_state,
             xdg_decoration_state,

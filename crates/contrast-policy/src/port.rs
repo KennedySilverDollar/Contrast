@@ -41,6 +41,12 @@ pub trait Policy {
     /// 背景色（RGBA、0.0〜1.0）。
     fn background(&self) -> [f32; 4];
 
+    /// フォーカス枠の太さ（論理ピクセル、0 で枠なし）。窓はタイルからこの幅だけ内側に縮めて置く。
+    fn border_width(&self) -> i32;
+
+    /// フォーカス枠の色（RGBA、0.0〜1.0）。
+    fn focus_border_color(&self) -> [f32; 4];
+
     /// ワークスペースの数（1 以上）。
     fn workspace_count(&self) -> u8;
 

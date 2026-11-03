@@ -27,6 +27,14 @@ impl Policy for StaticPolicy {
         [0.12, 0.14, 0.20, 1.0]
     }
 
+    fn border_width(&self) -> i32 {
+        3
+    }
+
+    fn focus_border_color(&self) -> [f32; 4] {
+        [0.40, 0.65, 1.0, 1.0]
+    }
+
     fn workspace_count(&self) -> u8 {
         4
     }

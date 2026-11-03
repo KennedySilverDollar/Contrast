@@ -23,6 +23,20 @@ pub struct Managed {
     pub workspace: u8,
     /// 最後にフォーカスされた順番（大きいほど新しい）。
     pub focus_stamp: u64,
+    /// 最後の配置で割り当てたタイル（枠を含む）。未配置なら `None`。
+    pub tile: Option<Rect>,
+}
+
+/// タイルを四辺から `b` だけ縮めた矩形。縮められなければタイルそのもの。
+fn inset(tile: Rect, b: i32) -> Rect {
+    let twice = b.saturating_mul(2);
+    Rect::new(
+        tile.x().saturating_add(b),
+        tile.y().saturating_add(b),
+        tile.width().saturating_sub(twice),
+        tile.height().saturating_sub(twice),
+    )
+    .unwrap_or(tile)
 }
 
 impl Contrast {
@@ -52,6 +66,7 @@ impl Contrast {
             window: window.clone(),
             workspace: self.active_ws,
             focus_stamp: 0,
+            tile: None,
         });
         self.relayout();
         self.focus_window(Some(&window));
@@ -101,6 +116,21 @@ impl Contrast {
             .map(|m| m.window.clone())
     }
 
+    /// 表示中で、タイル（枠を含む）が点 `(x, y)` を含む窓。
+    pub fn visible_window_at(&self, x: i32, y: i32) -> Option<&Managed> {
+        let p = contrast_core::Point::new(x, y);
+        self.windows
+            .iter()
+            .filter(|m| m.workspace == self.active_ws)
+            .find(|m| m.tile.is_some_and(|t| t.contains(p)))
+    }
+
+    /// フォーカス枠を描くべきタイル（表示中のフォーカス窓のもの）。
+    pub fn focused_tile(&self) -> Option<Rect> {
+        let m = &self.windows[self.focused_index()?];
+        if m.workspace == self.active_ws { m.tile } else { None }
+    }
+
     /// キーボードフォーカスを持つ管理中の窓の位置。
     pub fn focused_index(&self) -> Option<usize> {
         let keyboard = self.seat.get_keyboard()?;
@@ -132,10 +162,15 @@ impl Contrast {
             .filter(|m| m.workspace == self.active_ws)
             .map(|m| (m.id, m.window.clone()))
             .collect();
-        let rects = self.policy.layout(area, visible.len());
-        assert_eq!(rects.len(), visible.len(), "policy returned wrong rect count");
+        let tiles = self.policy.layout(area, visible.len());
+        assert_eq!(tiles.len(), visible.len(), "policy returned wrong rect count");
+        let border = self.policy.border_width().max(0);
 
-        for ((id, window), rect) in visible.into_iter().zip(rects) {
+        for ((id, window), tile) in visible.into_iter().zip(tiles) {
+            if let Some(m) = self.windows.iter_mut().find(|m| m.id == id) {
+                m.tile = Some(tile);
+            }
+            let rect = inset(tile, border);
             let toplevel = window.toplevel().expect("wayland toplevel");
             toplevel.with_pending_state(|s| {
                 s.size = Some((rect.width(), rect.height()).into());
@@ -155,6 +190,7 @@ impl Contrast {
                 y = rect.y(),
                 w = rect.width(),
                 h = rect.height(),
+                border,
                 "layout"
             );
         }
