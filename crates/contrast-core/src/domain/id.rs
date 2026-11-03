@@ -132,11 +132,14 @@ impl<T: IdKind> IdGen<T> {
             kind: PhantomData,
         }
     }
-
     /// 現在値の ID を返して 1 進める。
     ///
     /// # Errors
     /// 現在値が `u64::MAX` なら `CoreError::IdExhausted`。このとき状態は変わらないので、以後も同じ。
+    #[allow(
+        clippy::should_implement_trait,
+        reason = "Iterator ではない。枯渇は終端ではなくエラー（IdExhausted）として返す"
+    )]
     pub fn next(&mut self) -> Result<T, CoreError> {
         let advanced = self.next_raw.checked_add(1).ok_or(CoreError::IdExhausted)?;
         let id = T::from_raw(self.next_raw);
