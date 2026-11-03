@@ -6,6 +6,10 @@ edition = "2024"
 [lib]
 path = "src/lib.rs"
 
+[[test]]
+name = "spec"
+path = "tests/spec/main.rs"
+
 [features]
 invariants = []
 

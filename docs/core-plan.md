@@ -37,7 +37,8 @@
 - [ ] flake の devShell に cargo-kani、cargo-mutants、cargo-llvm-cov、cargo-semver-checks
 - [ ] `crates/contrast-core/Cargo.toml` の `[lints]` に仕様 8 節の clippy 設定、`[features] invariants = []`
 - [ ] `clippy.toml` に `allow-unwrap-in-tests = true` と `allow-expect-in-tests = true`
-- [ ] `lib.rs` に `#![no_std]`、`extern crate alloc;`、`#![forbid(unsafe_code)]`
+- [ ] `lib.rs` に `#![no_std]`、`extern crate alloc;`、`#![forbid(unsafe_code)]`、`#[cfg(any(kani))] mod verification;`
+- [ ] `src/verification/` の `mod.rs`、`spec/mod.rs`、`extra/mod.rs`、`tests/spec/main.rs` を置く（キット同梱）
 - [ ] 本リポジトリ同梱の CLAUDE.md、`.claude/settings.json`、`scripts/`、`prompts/`、`docs/` を配置
 - [ ] `.gitignore` に `.cc-logs/` と `mutants.out*/`
 - [ ] `scripts/*.sh` に実行権限を付ける

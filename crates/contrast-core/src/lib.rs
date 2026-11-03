@@ -14,14 +14,9 @@ mod domain {
 
 mod error;
 
-/// Kani ハーネス。
+/// Kani ハーネス（`spec/` は人間、`extra/` は実装者）。
 #[cfg(kani)]
-mod verification {
-    /// 実装者が足したハーネス。
-    mod extra {
-        mod geometry;
-    }
-}
+mod verification;
 
 pub use domain::geometry::{Point, Rect, Size};
 pub use error::LayoutError;

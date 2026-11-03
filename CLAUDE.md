@@ -41,7 +41,7 @@ CDL（Contrast Document Language）は別リポジトリ。contrast-core は CDL
 - `scripts/verify.sh`          fmt / clippy / no_std ビルド / 層検査 / test（256 ケース）
 - `scripts/verify.sh --full`   上記 + test 10,000 ケース + Kani 全ハーネス + 差分ミュータント
 - `cargo kani -p contrast-core --harness <名前>`   ハーネス単体
-- `cargo test -p contrast-core --test spec_<名前>`  仕様テスト単体
+- `cargo test -p contrast-core --test spec <名前>`  仕様テスト（tests/spec/main.rs が入口。名前でフィルタ）
 
 ## 書き方
 - 公開・非公開を問わず全項目に doc コメント。モジュール冒頭に役割と
