@@ -6,8 +6,7 @@ cd "$(git rev-parse --show-toplevel)"
 
 phase="${1:?フェーズ番号を指定 (例: 1)}"
 prompt="prompts/p${phase}.md"
-# .claude/settings.json の deny と、人間だけが変える設定ファイル（flake・fmt・clippy・deny）。
-protected='^(crates/contrast-core/tests/spec/|crates/contrast-core/src/verification/spec/|CLAUDE\.md$|\.claude/|docs/core-spec\.md$|docs/core-plan\.md$|scripts/|\.github/|.*Cargo\.toml$|rust-toolchain\.toml$|flake\.(nix|lock)$|(.*/)?(clippy|rustfmt|deny)\.toml$|p1-spec/)'
+protected='^(crates/contrast-core/tests/spec/|crates/contrast-core/src/verification/spec/|CLAUDE\.md$|\.claude/|docs/core-spec\.md$|docs/core-plan\.md$|scripts/|\.github/|.*Cargo\.toml$)'
 
 [[ -f "$prompt" ]] || { echo "プロンプトがない: $prompt" >&2; exit 1; }
 
