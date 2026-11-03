@@ -60,3 +60,20 @@ Claude Code はここに追記する。人間が回答したら「回答:」行�
   - いずれでも、ルートの `contrast-wm` パッケージを残すか（仮想 workspace にするか）も決める。
 - 止めた作業: core-spec 2 節の書き換え（意味に関わるため）
 - 回答: （人間が記入）
+
+### Q5 (p2) tests/spec/ が clippy を通らず、verify.sh（--full なし）を緑にできない
+- 該当箇所: `crates/contrast-core/tests/spec/main.rs`、`tests/spec/spec_id.rs` 16・174〜181 行、`tests/spec/spec_geometry.rs` 5 行
+- 疑問: `nix develop -c scripts/verify.sh` が clippy で止まる。`--all-targets --all-features -- -D warnings` の指摘 8 件は
+  すべて仕様ファイルにあり、src/ と tests/impl_*.rs には 1 件もない。
+  - spec_geometry.rs 5 行 `clippy::expect_used`（補助関数 `fn rect`。Q1 と同じ）
+  - spec_id.rs 16 行 `clippy::arithmetic_side_effects`（補助関数 `assert_consistent` の `forward += 1`）
+  - spec_id.rs 174〜177・179・181 行 `clippy::indexing_slicing`（`ids[0]` など。`#[test]` 関数の中でも対象）
+  P2 の指示では「tests/spec/main.rs と同じ形の crate レベルの `#![allow(...)]`」とあるが、main.rs には現在 `#![allow]` が無い。
+  no_std・layering・test（256 ケース）は個別に実行して緑（spec 35 件、impl_id 14 件、impl_geometry 11 件）。
+- 候補:
+  - A（推奨）: 人間が `tests/spec/main.rs` の先頭に
+    `#![allow(clippy::expect_used, clippy::arithmetic_side_effects, clippy::indexing_slicing, reason = "仕様テストは読みやすさを優先する")]` を足す。
+  - B: 仕様テスト側を lint に合わせて書き換える（`forward` を `checked_add` で増やす、`ids[0]` を `ids.first()` などに置き換える）。
+  - C: verify.sh の clippy を `--all-targets` から、`--test spec` だけ別の lint 設定で走らせる形に分ける（scripts/ は人間が変える）。
+- 止めた作業: verify.sh を緑にすること（clippy 以降のステップは個別に確認済み）
+- 回答: （人間が記入）
