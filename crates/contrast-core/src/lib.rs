@@ -10,6 +10,7 @@ extern crate alloc;
 /// エンティティと値オブジェクト。crate 内の他モジュールに依存しない。
 mod domain {
     pub mod geometry;
+    pub mod id;
 }
 
 mod error;
@@ -19,4 +20,7 @@ mod error;
 mod verification;
 
 pub use domain::geometry::{Point, Rect, Size};
-pub use error::LayoutError;
+pub use domain::id::{
+    EntityId, ExternalKey, IdGen, IdKind, KeyMap, OutputId, WindowId, WorkspaceId, WorkspaceIndex,
+};
+pub use error::{CoreError, LayoutError};
