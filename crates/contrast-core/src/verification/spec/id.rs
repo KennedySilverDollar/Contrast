@@ -10,7 +10,10 @@ fn idgen_next_never_panics() {
     let mut g = IdGen::<WindowId>::starting_at(start);
     match g.next() {
         Ok(id) => kani::assert(id.raw() == start && start != u64::MAX, "開始値を返す"),
-        Err(e) => kani::assert(e == CoreError::IdExhausted && start == u64::MAX, "枯渇だけが失敗"),
+        Err(e) => kani::assert(
+            e == CoreError::IdExhausted && start == u64::MAX,
+            "枯渇だけが失敗",
+        ),
     }
 }
 
@@ -30,7 +33,9 @@ fn idgen_is_strictly_monotone() {
 #[kani::unwind(5)]
 fn keymap_ops_preserve_bijection() {
     let mut g = IdGen::<WindowId>::new();
-    let (Ok(w0), Ok(w1), Ok(w2)) = (g.next(), g.next(), g.next()) else { return };
+    let (Ok(w0), Ok(w1), Ok(w2)) = (g.next(), g.next(), g.next()) else {
+        return;
+    };
     let pool = [w0, w1, w2];
     let mut m = KeyMap::<WindowId>::new();
 

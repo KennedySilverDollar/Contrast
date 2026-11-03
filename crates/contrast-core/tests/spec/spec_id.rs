@@ -1,6 +1,8 @@
 //! P2 仕様: ID の払い出しと ExternalKey ⇔ ID の対応表。
 //! 公開 API だけで書く（feature や cfg に依存しない）。
-use contrast_core::{CoreError, EntityId, ExternalKey, IdGen, IdKind, KeyMap, OutputId, WindowId, WorkspaceIndex};
+use contrast_core::{
+    CoreError, EntityId, ExternalKey, IdGen, IdKind, KeyMap, OutputId, WindowId, WorkspaceIndex,
+};
 
 fn key(n: u64) -> ExternalKey {
     ExternalKey::new(n)
