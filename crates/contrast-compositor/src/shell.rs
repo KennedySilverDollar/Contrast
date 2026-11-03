@@ -20,15 +20,17 @@ use smithay::{
 };
 
 use contrast_core::{
-    Columns, Command, Core, CoreError, DefaultPolicy, Effect, EntityId, ExternalKey, IdKind,
-    OutputName, Point, Rect, WindowId, WindowMeta, WindowState,
+    Columns, Command, Core, CoreError, Effect, EntityId, ExternalKey, IdKind, OutputName, Point,
+    Rect, WindowId, WindowMeta, WindowState,
 };
+
+use contrast_policy::{Policy, PortPlacement};
 
 use crate::handler::fmt_id;
 use crate::state::Contrast;
 
-/// コンポジタが使う Core の型。
-pub type ContrastCore = Core<DefaultPolicy, Columns>;
+/// コンポジタが使う Core の型。窓の配置は `contrast_policy::Policy` に問い合わせる。
+pub type ContrastCore = Core<PortPlacement<dyn Policy>, Columns>;
 
 /// core とシェル側の対応。
 #[derive(Default)]

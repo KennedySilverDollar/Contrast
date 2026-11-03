@@ -2,9 +2,9 @@
 //!
 //! 配置は `Rect::split_columns` による横一列。キーバインドは固定表。
 
-use contrast_core::Rect;
+use contrast_core::{Rect, WindowMeta, WindowState};
 
-use crate::port::{Action, Mods, Policy};
+use crate::port::{Action, Mods, Policy, WindowPlacement};
 
 /// 静的な既定値で答えるポリシー。
 #[derive(Debug, Clone)]
@@ -46,6 +46,21 @@ impl Policy for StaticPolicy {
         // 幅が窓数に足りないときは全窓を作業領域いっぱいに重ねる（プロトタイプの割り切り）。
         area.split_columns(count)
             .unwrap_or_else(|_| vec![area; count])
+    }
+
+    /// contrast-core の `DefaultPolicy` と同じ: ダイアログは Floating、他は Tiled、
+    /// 配置先はフォーカス出力の表示ワークスペース、フォーカスを与える。
+    fn place_window(&self, meta: &WindowMeta) -> WindowPlacement {
+        let state = if meta.is_dialog {
+            WindowState::Floating
+        } else {
+            WindowState::Tiled
+        };
+        WindowPlacement {
+            workspace: None,
+            state,
+            focus: true,
+        }
     }
 
     fn resolve_key(&self, mods: Mods, keysym: &str) -> Option<Action> {

@@ -4,7 +4,7 @@
 //! 決定はすべてここを経由させ、実装を `StaticPolicy` から CDL 由来の実装へ
 //! 差し替えられるようにしておく。
 
-use contrast_core::Rect;
+use contrast_core::{Rect, WindowMeta, WindowState};
 
 /// キー入力時の修飾キーの状態。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -36,6 +36,17 @@ pub enum Action {
     Quit,
 }
 
+/// 新しい窓の配置の判断（`Policy::place_window` の結果）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WindowPlacement {
+    /// 配置先のワークスペース（0 始まり）。`None` ならフォーカス出力の表示ワークスペース。
+    pub workspace: Option<u8>,
+    /// 初期状態。
+    pub state: WindowState,
+    /// 配置先が表示中ならフォーカスを与えるか。
+    pub focus: bool,
+}
+
 /// コンポジタがポリシーに問い合わせる口。
 pub trait Policy {
     /// 背景色（RGBA、0.0〜1.0）。
@@ -54,6 +65,11 @@ pub trait Policy {
     ///
     /// 戻り値の長さは `count` と等しくなければならない。
     fn layout(&self, area: Rect, count: usize) -> Vec<Rect>;
+
+    /// 新しい窓（app_id・title・is_dialog など）をどこにどう置くか決める。
+    ///
+    /// contrast-core の `Policy::place` には `core_adapter::PortPlacement` 経由で渡る。
+    fn place_window(&self, meta: &WindowMeta) -> WindowPlacement;
 
     /// 修飾キーとキーシンボル名（xkb の名前、例 `"Return"`, `"q"`, `"Left"`）から
     /// 意味操作を引く。該当しなければ `None`（クライアントへ素通しする）。

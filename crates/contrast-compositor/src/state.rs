@@ -1,6 +1,6 @@
 //! コンポジタ全体の状態と、Wayland ソケットの用意。
 
-use std::{ffi::OsString, sync::Arc};
+use std::{ffi::OsString, rc::Rc, sync::Arc};
 
 use smithay::{
     backend::renderer::element::solid::SolidColorBuffer,
@@ -23,7 +23,7 @@ use smithay::{
     },
 };
 
-use contrast_policy::Policy;
+use contrast_policy::{Policy, PortPlacement};
 
 use crate::shell::{ContrastCore, Shell};
 
@@ -40,7 +40,8 @@ pub struct Contrast {
     /// イベントループを止めるための信号。
     pub loop_signal: LoopSignal,
     /// 配置・キーバインドの問い合わせ先。
-    pub policy: Box<dyn Policy>,
+    /// core の配置判断（`PortPlacement`）とも共有する。
+    pub policy: Rc<dyn Policy>,
     /// 配置・フォーカスを決める状態遷移エンジン。
     pub core: ContrastCore,
     /// core の ExternalKey とシェル側の窓・出力の対応。
@@ -66,7 +67,7 @@ impl Contrast {
     pub fn new(
         event_loop: &mut EventLoop<Self>,
         display: Display<Self>,
-        policy: Box<dyn Policy>,
+        policy: Rc<dyn Policy>,
     ) -> Self {
         let dh = display.handle();
 
@@ -85,7 +86,7 @@ impl Contrast {
         let socket_name = Self::init_wayland_listener(display, event_loop);
         let core = ContrastCore::new(
             contrast_core::CoreConfig::new(policy.workspace_count()),
-            contrast_core::DefaultPolicy::new(),
+            PortPlacement::new(Rc::clone(&policy)),
             contrast_core::Columns::new(),
         );
 

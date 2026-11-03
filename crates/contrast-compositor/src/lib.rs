@@ -19,7 +19,7 @@ pub use state::Contrast;
 pub fn run(policy: Box<dyn Policy>) -> Result<(), Box<dyn std::error::Error>> {
     let mut event_loop: EventLoop<Contrast> = EventLoop::try_new()?;
     let display: Display<Contrast> = Display::new()?;
-    let mut state = Contrast::new(&mut event_loop, display, policy);
+    let mut state = Contrast::new(&mut event_loop, display, std::rc::Rc::from(policy));
 
     backend::winit::init_winit(&mut event_loop, &mut state)?;
     input::debug::init(&mut event_loop);
