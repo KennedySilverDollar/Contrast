@@ -90,7 +90,10 @@ mod tests {
         assert_eq!(p.resolve_key(alt(false), "q"), Some(Action::CloseFocused));
         assert_eq!(p.resolve_key(alt(true), "q"), Some(Action::Quit));
         for (key, ws) in [("1", 0), ("2", 1), ("3", 2), ("4", 3)] {
-            assert_eq!(p.resolve_key(alt(false), key), Some(Action::SwitchWorkspace(ws)));
+            assert_eq!(
+                p.resolve_key(alt(false), key),
+                Some(Action::SwitchWorkspace(ws))
+            );
             assert!(ws < p.workspace_count());
         }
         assert_eq!(p.resolve_key(alt(false), "5"), None);

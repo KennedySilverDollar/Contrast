@@ -2,7 +2,9 @@
 
 use smithay::{
     delegate_xdg_shell,
-    desktop::{PopupKind, PopupManager, Window, find_popup_root_surface, get_popup_toplevel_coords},
+    desktop::{
+        PopupKind, PopupManager, Window, find_popup_root_surface, get_popup_toplevel_coords,
+    },
     reexports::wayland_server::protocol::{wl_seat, wl_surface::WlSurface},
     utils::Serial,
     wayland::shell::xdg::{
@@ -30,7 +32,12 @@ impl XdgShellHandler for Contrast {
         let _ = self.popups.track_popup(PopupKind::Xdg(surface));
     }
 
-    fn reposition_request(&mut self, surface: PopupSurface, positioner: PositionerState, token: u32) {
+    fn reposition_request(
+        &mut self,
+        surface: PopupSurface,
+        positioner: PositionerState,
+        token: u32,
+    ) {
         surface.with_pending_state(|state| {
             state.geometry = positioner.get_geometry();
             state.positioner = positioner;

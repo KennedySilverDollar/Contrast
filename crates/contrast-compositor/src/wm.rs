@@ -128,7 +128,11 @@ impl Contrast {
     /// フォーカス枠を描くべきタイル（表示中のフォーカス窓のもの）。
     pub fn focused_tile(&self) -> Option<Rect> {
         let m = &self.windows[self.focused_index()?];
-        if m.workspace == self.active_ws { m.tile } else { None }
+        if m.workspace == self.active_ws {
+            m.tile
+        } else {
+            None
+        }
     }
 
     /// キーボードフォーカスを持つ管理中の窓の位置。
@@ -152,7 +156,11 @@ impl Contrast {
             return;
         };
 
-        for m in self.windows.iter().filter(|m| m.workspace != self.active_ws) {
+        for m in self
+            .windows
+            .iter()
+            .filter(|m| m.workspace != self.active_ws)
+        {
             self.space.unmap_elem(&m.window);
         }
 
@@ -163,7 +171,11 @@ impl Contrast {
             .map(|m| (m.id, m.window.clone()))
             .collect();
         let tiles = self.policy.layout(area, visible.len());
-        assert_eq!(tiles.len(), visible.len(), "policy returned wrong rect count");
+        assert_eq!(
+            tiles.len(),
+            visible.len(),
+            "policy returned wrong rect count"
+        );
         let border = self.policy.border_width().max(0);
 
         for ((id, window), tile) in visible.into_iter().zip(tiles) {

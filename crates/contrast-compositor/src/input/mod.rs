@@ -8,13 +8,13 @@ use smithay::{
         AbsolutePositionEvent, Axis, AxisSource, ButtonState, Event, InputBackend, InputEvent,
         KeyState, KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent,
     },
+    desktop::WindowSurfaceType,
     input::{
         keyboard::{FilterResult, ModifiersState, xkb},
         pointer::{AxisFrame, ButtonEvent, MotionEvent},
     },
     reexports::wayland_server::protocol::wl_surface::WlSurface,
     utils::{Logical, Point, SERIAL_COUNTER},
-    desktop::WindowSurfaceType,
 };
 
 use contrast_policy::{Action, Mods};
@@ -34,11 +34,13 @@ fn to_mods(m: &ModifiersState) -> Mods {
 impl Contrast {
     /// 座標の下にある surface と、その surface の原点の位置。
     fn surface_under(&self, pos: Point<f64, Logical>) -> Option<(WlSurface, Point<f64, Logical>)> {
-        self.space.element_under(pos).and_then(|(window, location)| {
-            window
-                .surface_under(pos - location.to_f64(), WindowSurfaceType::ALL)
-                .map(|(s, p)| (s, (p + location).to_f64()))
-        })
+        self.space
+            .element_under(pos)
+            .and_then(|(window, location)| {
+                window
+                    .surface_under(pos - location.to_f64(), WindowSurfaceType::ALL)
+                    .map(|(s, p)| (s, (p + location).to_f64()))
+            })
     }
 
     /// 座標の下の窓にフォーカスを移す。窓の外（空き領域）なら何もしない。
@@ -54,11 +56,9 @@ impl Contrast {
     /// winit からの入力イベントを 1 つ処理する。
     pub fn process_input_event<I: InputBackend>(&mut self, event: InputEvent<I>) {
         match event {
-            InputEvent::Keyboard { event, .. } => self.on_key(
-                event.key_code(),
-                event.state(),
-                Event::time_msec(&event),
-            ),
+            InputEvent::Keyboard { event, .. } => {
+                self.on_key(event.key_code(), event.state(), Event::time_msec(&event))
+            }
             InputEvent::PointerMotionAbsolute { event, .. } => {
                 let output = self.space.outputs().next().expect("one output").clone();
                 let output_geo = self.space.output_geometry(&output).expect("mapped output");

@@ -31,12 +31,7 @@ pub fn render_frame(
 
     {
         let (renderer, mut framebuffer) = backend.bind().expect("failed to bind backend");
-        smithay::desktop::space::render_output::<
-            _,
-            SolidColorRenderElement,
-            _,
-            _,
-        >(
+        smithay::desktop::space::render_output::<_, SolidColorRenderElement, _, _>(
             output,
             renderer,
             &mut framebuffer,
