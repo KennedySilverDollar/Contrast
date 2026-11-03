@@ -58,8 +58,15 @@ impl Contrast {
         self.focus_window(Some(&visible[next]));
     }
 
-    /// 表示するワークスペースを切り替える（M4）。
+    /// 表示するワークスペースを切り替え、並べ直して、そこで最後にフォーカスした窓へ移る。
     fn switch_workspace(&mut self, n: u8) {
-        tracing::info!(workspace = n + 1, "switch workspace: not implemented yet");
+        if n >= self.policy.workspace_count() || n == self.active_ws {
+            return;
+        }
+        tracing::info!(from = self.active_ws + 1, to = n + 1, "switch workspace");
+        self.active_ws = n;
+        self.relayout();
+        let target = self.most_recent_visible();
+        self.focus_window(target.as_ref());
     }
 }
