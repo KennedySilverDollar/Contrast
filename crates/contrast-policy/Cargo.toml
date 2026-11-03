@@ -1,0 +1,9 @@
+[package]
+name = "contrast-policy"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Contrast のポリシー差し込み口（port）と静的ポリシー。CDL はあとから cdl_adapter で接続する"
+
+[dependencies]
+contrast-core = { path = "../contrast-core" }

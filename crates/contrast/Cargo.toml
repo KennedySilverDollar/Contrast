@@ -1,0 +1,11 @@
+[package]
+name = "contrast"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Contrast の実行ファイル（nested プロトタイプ）"
+
+[dependencies]
+contrast-compositor = { path = "../contrast-compositor" }
+contrast-policy = { path = "../contrast-policy" }
+tracing-subscriber = { version = "=0.3.23", features = ["env-filter"] }
