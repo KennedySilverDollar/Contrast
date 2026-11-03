@@ -31,8 +31,14 @@ fn intersect_symmetric_and_contained() {
     if let Some(i) = ab {
         kani::assert(i.x() >= a.x() && i.x() >= b.x(), "左端が両方の内側");
         kani::assert(i.y() >= a.y() && i.y() >= b.y(), "上端が両方の内側");
-        kani::assert(i.right() <= a.right() && i.right() <= b.right(), "右端が両方の内側");
-        kani::assert(i.bottom() <= a.bottom() && i.bottom() <= b.bottom(), "下端が両方の内側");
+        kani::assert(
+            i.right() <= a.right() && i.right() <= b.right(),
+            "右端が両方の内側",
+        );
+        kani::assert(
+            i.bottom() <= a.bottom() && i.bottom() <= b.bottom(),
+            "下端が両方の内側",
+        );
     }
 }
 
@@ -61,7 +67,9 @@ fn split_columns_partitions_rect() {
     let (x, y, w, h): (i32, i32, i32, i32) = kani::any();
     let n: usize = kani::any();
     kani::assume((1..=4).contains(&n));
-    let Some(r) = Rect::new(x, y, w, h) else { return };
+    let Some(r) = Rect::new(x, y, w, h) else {
+        return;
+    };
     match r.split_columns(n) {
         Err(_) => kani::assert(r.width() < n as i32, "失敗は幅不足のときだけ"),
         Ok(parts) => {
@@ -86,7 +94,9 @@ fn split_rows_partitions_rect() {
     let (x, y, w, h): (i32, i32, i32, i32) = kani::any();
     let n: usize = kani::any();
     kani::assume((1..=4).contains(&n));
-    let Some(r) = Rect::new(x, y, w, h) else { return };
+    let Some(r) = Rect::new(x, y, w, h) else {
+        return;
+    };
     match r.split_rows(n) {
         Err(_) => kani::assert(r.height() < n as i32, "失敗は高さ不足のときだけ"),
         Ok(parts) => {

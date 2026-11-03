@@ -22,7 +22,6 @@
         packages = [
           rust
           pkgs.cargo-mutants
-          pkgs.cargo-llvm-cov
           pkgs.cargo-semver-checks
           pkgs.cargo-deny
         ];

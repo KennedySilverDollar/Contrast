@@ -143,8 +143,14 @@ fn split_columns_exact_fit_gives_one_pixel_each() {
 
 #[test]
 fn split_columns_errors() {
-    assert_eq!(rect(0, 0, 10, 5).split_columns(0), Err(LayoutError::AreaTooSmall));
-    assert_eq!(rect(0, 0, 2, 5).split_columns(3), Err(LayoutError::AreaTooSmall));
+    assert_eq!(
+        rect(0, 0, 10, 5).split_columns(0),
+        Err(LayoutError::AreaTooSmall)
+    );
+    assert_eq!(
+        rect(0, 0, 2, 5).split_columns(3),
+        Err(LayoutError::AreaTooSmall)
+    );
 }
 
 #[test]
@@ -156,6 +162,12 @@ fn split_rows_gives_remainder_to_the_top() {
 
 #[test]
 fn split_rows_errors() {
-    assert_eq!(rect(0, 0, 5, 10).split_rows(0), Err(LayoutError::AreaTooSmall));
-    assert_eq!(rect(0, 0, 5, 2).split_rows(3), Err(LayoutError::AreaTooSmall));
+    assert_eq!(
+        rect(0, 0, 5, 10).split_rows(0),
+        Err(LayoutError::AreaTooSmall)
+    );
+    assert_eq!(
+        rect(0, 0, 5, 2).split_rows(3),
+        Err(LayoutError::AreaTooSmall)
+    );
 }

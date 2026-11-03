@@ -138,10 +138,7 @@ impl<T: IdKind> IdGen<T> {
     /// # Errors
     /// 現在値が `u64::MAX` なら `CoreError::IdExhausted`。このとき状態は変わらないので、以後も同じ。
     pub fn next(&mut self) -> Result<T, CoreError> {
-        let advanced = self
-            .next_raw
-            .checked_add(1)
-            .ok_or(CoreError::IdExhausted)?;
+        let advanced = self.next_raw.checked_add(1).ok_or(CoreError::IdExhausted)?;
         let id = T::from_raw(self.next_raw);
         self.next_raw = advanced;
         Ok(id)

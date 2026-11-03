@@ -88,7 +88,10 @@ fn keymap_output_ops_preserve_bijection_and_len() {
                 "insert の失敗は DuplicateKey だけ",
             );
             if r.is_ok() {
-                kani::assert(Some(m.len()) == before.len().checked_add(1), "成功で 1 増える");
+                kani::assert(
+                    Some(m.len()) == before.len().checked_add(1),
+                    "成功で 1 増える",
+                );
             }
             r.is_ok()
         } else {
@@ -98,7 +101,10 @@ fn keymap_output_ops_preserve_bijection_and_len() {
                 "remove の失敗は UnknownKey だけ",
             );
             if r.is_ok() {
-                kani::assert(Some(m.len()) == before.len().checked_sub(1), "成功で 1 減る");
+                kani::assert(
+                    Some(m.len()) == before.len().checked_sub(1),
+                    "成功で 1 減る",
+                );
             }
             r.is_ok()
         };
