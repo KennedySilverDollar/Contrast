@@ -6,4 +6,9 @@ edition = "2024"
 [dependencies]
 
 [workspace]
-members = ["crates/contrast-core"]
+members = [
+    "crates/contrast-core",
+    "crates/contrast-policy",
+    "crates/contrast-compositor",
+    "crates/contrast",
+]

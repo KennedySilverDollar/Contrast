@@ -24,6 +24,19 @@
           pkgs.cargo-mutants
           pkgs.cargo-semver-checks
           pkgs.cargo-deny
+          # nested プロトタイプ（contrast / contrast-compositor）のビルドと実行用
+          pkgs.pkg-config
+          pkgs.wayland
+          pkgs.libxkbcommon
+          pkgs.libGL
+          pkgs.foot
+          pkgs.wayland-utils
+        ];
+        # winit / EGL は libwayland-client・libEGL・libxkbcommon を dlopen するので実行時に見えるようにする
+        LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [
+          pkgs.wayland
+          pkgs.libxkbcommon
+          pkgs.libGL
         ];
       };
     };
