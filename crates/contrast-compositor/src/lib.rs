@@ -7,6 +7,7 @@ mod backend;
 mod handler;
 mod render;
 mod state;
+mod wm;
 
 use smithay::reexports::{calloop::EventLoop, wayland_server::Display};
 

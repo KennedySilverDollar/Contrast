@@ -62,6 +62,7 @@ pub fn init_winit(
                     None,
                 );
                 tracing::info!(?size, "output resized");
+                state.relayout();
             }
             WinitEvent::Input(_event) => {}
             WinitEvent::Redraw => {

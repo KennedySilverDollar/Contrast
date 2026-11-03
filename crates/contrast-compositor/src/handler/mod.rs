@@ -1,4 +1,6 @@
-//! Wayland プロトコルのハンドラ実装（compositor / shm / seat / data device / output）。
+//! Wayland プロトコルのハンドラ実装（compositor / shm / seat / data device / output / xdg-shell）。
+
+mod xdg_shell;
 
 use smithay::{
     backend::renderer::utils::on_commit_buffer_handler,
@@ -10,7 +12,10 @@ use smithay::{
     },
     wayland::{
         buffer::BufferHandler,
-        compositor::{CompositorClientState, CompositorHandler, CompositorState},
+        compositor::{
+            CompositorClientState, CompositorHandler, CompositorState, get_parent,
+            is_sync_subsurface,
+        },
         output::OutputHandler,
         selection::{
             SelectionHandler,
@@ -39,6 +44,18 @@ impl CompositorHandler for Contrast {
 
     fn commit(&mut self, surface: &WlSurface) {
         on_commit_buffer_handler::<Self>(surface);
+        if !is_sync_subsurface(surface) {
+            let mut root = surface.clone();
+            while let Some(parent) = get_parent(&root) {
+                root = parent;
+            }
+            if root != *surface
+                && let Some(index) = self.index_of_surface(&root)
+            {
+                self.windows[index].window.on_commit();
+            }
+        }
+        xdg_shell::handle_commit(self, surface);
     }
 }
 

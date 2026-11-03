@@ -16,12 +16,15 @@ use smithay::{
         compositor::{CompositorClientState, CompositorState},
         output::OutputManagerState,
         selection::data_device::DataDeviceState,
+        shell::xdg::XdgShellState,
         shm::ShmState,
         socket::ListeningSocketSource,
     },
 };
 
 use contrast_policy::Policy;
+
+use crate::wm::Managed;
 
 /// コンポジタの状態。calloop のイベントループが `&mut` で持ち回る。
 pub struct Contrast {
@@ -37,7 +40,16 @@ pub struct Contrast {
     pub loop_signal: LoopSignal,
     /// 配置・キーバインドの問い合わせ先。
     pub policy: Box<dyn Policy>,
+    /// 管理中の窓。並び順がそのまま配置の順。
+    pub windows: Vec<Managed>,
+    /// 次に払い出す窓の通し番号の 1 つ前。
+    pub next_id: u64,
+    /// 表示中のワークスペース（0 始まり）。
+    pub active_ws: u8,
+    /// フォーカス順の刻み。
+    pub focus_counter: u64,
 
+    pub xdg_shell_state: XdgShellState,
     pub compositor_state: CompositorState,
     pub shm_state: ShmState,
     pub output_manager_state: OutputManagerState,
@@ -57,6 +69,7 @@ impl Contrast {
         let dh = display.handle();
 
         let compositor_state = CompositorState::new::<Self>(&dh);
+        let xdg_shell_state = XdgShellState::new::<Self>(&dh);
         let shm_state = ShmState::new::<Self>(&dh, vec![]);
         let output_manager_state = OutputManagerState::new_with_xdg_output::<Self>(&dh);
         let mut seat_state = SeatState::new();
@@ -75,6 +88,11 @@ impl Contrast {
             space: Space::default(),
             loop_signal: event_loop.get_signal(),
             policy,
+            windows: Vec::new(),
+            next_id: 0,
+            active_ws: 0,
+            focus_counter: 0,
+            xdg_shell_state,
             compositor_state,
             shm_state,
             output_manager_state,
