@@ -16,6 +16,7 @@ use smithay::{
         wayland_server::protocol::wl_surface::WlSurface,
     },
     utils::SERIAL_COUNTER,
+    wayland::{compositor::with_states, shell::xdg::XdgToplevelSurfaceData},
 };
 
 use contrast_core::{
@@ -34,8 +35,10 @@ pub type ContrastCore = Core<DefaultPolicy, Columns>;
 pub struct Shell {
     /// 次に払い出す ExternalKey の raw 値。
     next_key: u64,
-    /// 窓の ExternalKey ⇔ Smithay の窓。
+    /// 窓の ExternalKey ⇔ Smithay の窓（core に登録済みのもの）。
     pub windows: BTreeMap<ExternalKey, Window>,
+    /// 作られたが最初の commit をまだ受けていない窓（core には未登録）。
+    pub pending: Vec<Window>,
     /// 出力の ExternalKey（winit の出力は 1 つだけ）。
     pub output_key: Option<ExternalKey>,
 }
@@ -152,10 +155,34 @@ impl Contrast {
     }
 
     /// トップレベル窓ができた。
-    pub fn window_mapped(&mut self, window: Window) {
+    ///
+    /// core にはまだ送らず、最初の commit（`map_pending`）まで保留する。
+    pub fn window_created(&mut self, window: Window) {
+        self.shell.pending.push(window);
+    }
+
+    /// 保留中の窓の最初の commit。app_id と title をここで確定させて core に WindowMapped を送る。
+    ///
+    /// xdg-shell ではクライアントが app_id・title を設定してから最初の commit をするので、
+    /// この時点で無ければ「無い」と確定する。保留中の窓でなければ何もしない。
+    pub fn map_pending(&mut self, surface: &WlSurface) {
+        let Some(index) = self
+            .shell
+            .pending
+            .iter()
+            .position(|w| &surface_of(w) == surface)
+        else {
+            return;
+        };
+        let window = self.shell.pending.remove(index);
+        let meta = read_meta(&window);
+        tracing::info!(app_id = ?meta.app_id, title = ?meta.title, is_dialog = meta.is_dialog, "window first commit");
+        self.window_mapped(window, meta);
+    }
+
+    /// 窓を core に登録する。
+    fn window_mapped(&mut self, window: Window, meta: WindowMeta) {
         let key = self.shell.issue_key();
-        let mut meta = WindowMeta::default();
-        meta.is_dialog = window.toplevel().is_some_and(|t| t.parent().is_some());
         self.shell.windows.insert(key, window);
         if !self.submit(Command::WindowMapped { key, meta }) {
             // core に登録できなかった窓は管理しない（docs/questions.md Q9）。
@@ -164,7 +191,19 @@ impl Contrast {
     }
 
     /// トップレベル窓が消えた（クライアントの終了を含む）。
+    ///
+    /// 最初の commit の前に閉じられた窓は保留から外すだけで、core には何も送らない。
     pub fn window_unmapped(&mut self, surface: &WlSurface) {
+        if let Some(index) = self
+            .shell
+            .pending
+            .iter()
+            .position(|w| &surface_of(w) == surface)
+        {
+            self.shell.pending.remove(index);
+            tracing::info!("window closed before map");
+            return;
+        }
         let Some(key) = self.key_of_surface(surface) else {
             return;
         };
@@ -371,4 +410,23 @@ fn stacking(state: WindowState) -> u8 {
         WindowState::Floating => 1,
         _ => 2,
     }
+}
+
+/// トップレベルの app_id・title・親の有無から WindowMeta を作る。
+fn read_meta(window: &Window) -> WindowMeta {
+    let toplevel = window.toplevel().expect("wayland toplevel");
+    let (app_id, title) = with_states(toplevel.wl_surface(), |states| {
+        let data = states
+            .data_map
+            .get::<XdgToplevelSurfaceData>()
+            .expect("toplevel role data")
+            .lock()
+            .expect("toplevel data lock");
+        (data.app_id.clone(), data.title.clone())
+    });
+    let mut meta = WindowMeta::default();
+    meta.app_id = app_id;
+    meta.title = title;
+    meta.is_dialog = toplevel.parent().is_some();
+    meta
 }

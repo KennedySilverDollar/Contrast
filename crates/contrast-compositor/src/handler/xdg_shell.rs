@@ -20,7 +20,7 @@ impl XdgShellHandler for Contrast {
     }
 
     fn new_toplevel(&mut self, surface: ToplevelSurface) {
-        self.window_mapped(Window::new_wayland_window(surface));
+        self.window_created(Window::new_wayland_window(surface));
     }
 
     fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {
@@ -51,8 +51,10 @@ impl XdgShellHandler for Contrast {
 
 delegate_xdg_shell!(Contrast);
 
-/// commit 時の処理: 初回 configure の送信とポップアップの追跡。
+/// commit 時の処理: 保留中の窓の map、初回 configure の送信、ポップアップの追跡。
 pub fn handle_commit(state: &mut Contrast, surface: &WlSurface) {
+    // 最初の commit なら core に WindowMapped を送る。Configure の大きさは初回 configure に乗る。
+    state.map_pending(surface);
     if let Some(window) = state.window_of_surface(surface) {
         window.on_commit();
         let toplevel = window.toplevel().expect("wayland toplevel");
