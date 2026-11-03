@@ -20,9 +20,7 @@ impl Contrast {
         if toplevel.is_initial_configure_sent() {
             toplevel.send_pending_configure();
         }
-        let id = self
-            .index_of_surface(toplevel.wl_surface())
-            .map(|i| self.windows[i].id);
+        let id = self.log_id_of_surface(toplevel.wl_surface());
         tracing::info!("decoration mode=ServerSide window={}", fmt_id(id));
     }
 }

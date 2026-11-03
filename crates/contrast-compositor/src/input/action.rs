@@ -1,4 +1,6 @@
 //! 意味操作 `Action` の実行。
+//!
+//! 未使用（どこからも `mod` されていない）。input/bindings.rs と shell.rs に置き換えた。削除は人間が判断する。
 
 use contrast_policy::Action;
 

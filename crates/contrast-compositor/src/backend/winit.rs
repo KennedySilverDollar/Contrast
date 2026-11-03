@@ -7,8 +7,10 @@ use smithay::{
     },
     output::{Mode, Output, PhysicalProperties, Subpixel},
     reexports::calloop::EventLoop,
-    utils::Transform,
+    utils::{Physical, Size, Transform},
 };
+
+use contrast_core::Rect;
 
 use crate::state::Contrast;
 
@@ -44,6 +46,7 @@ pub fn init_winit(
     );
     output.set_preferred(mode);
     state.space.map_output(&output, (0, 0));
+    state.output_added("winit", output_rect(mode.size));
     tracing::info!(size = ?mode.size, "output created");
 
     let mut damage_tracker = OutputDamageTracker::from_output(&output);
@@ -62,7 +65,7 @@ pub fn init_winit(
                     None,
                 );
                 tracing::info!(?size, "output resized");
-                state.relayout();
+                state.output_changed(output_rect(size));
             }
             WinitEvent::Input(event) => state.process_input_event(event),
             WinitEvent::Redraw => {
@@ -74,4 +77,9 @@ pub fn init_winit(
         })?;
 
     Ok(())
+}
+
+/// 出力の論理矩形（原点 (0, 0)、拡大率 1）。
+fn output_rect(size: Size<i32, Physical>) -> Rect {
+    Rect::new(0, 0, size.w, size.h).expect("output size is positive")
 }

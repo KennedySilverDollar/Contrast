@@ -1,4 +1,6 @@
 //! 窓の管理: 並び順の保持、ポリシーによる配置、フォーカス。
+//!
+//! 未使用（どこからも `mod` されていない）。shell.rs（contrast-core への翻訳層） に置き換えた。削除は人間が判断する。
 
 use smithay::{
     desktop::Window,

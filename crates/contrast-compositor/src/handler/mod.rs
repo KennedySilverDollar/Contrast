@@ -53,9 +53,9 @@ impl CompositorHandler for Contrast {
                 root = parent;
             }
             if root != *surface
-                && let Some(index) = self.index_of_surface(&root)
+                && let Some(window) = self.window_of_surface(&root)
             {
-                self.windows[index].window.on_commit();
+                window.on_commit();
             }
         }
         xdg_shell::handle_commit(self, surface);

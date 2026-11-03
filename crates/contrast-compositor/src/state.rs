@@ -25,7 +25,7 @@ use smithay::{
 
 use contrast_policy::Policy;
 
-use crate::wm::Managed;
+use crate::shell::{ContrastCore, Shell};
 
 /// コンポジタの状態。calloop のイベントループが `&mut` で持ち回る。
 pub struct Contrast {
@@ -41,14 +41,10 @@ pub struct Contrast {
     pub loop_signal: LoopSignal,
     /// 配置・キーバインドの問い合わせ先。
     pub policy: Box<dyn Policy>,
-    /// 管理中の窓。並び順がそのまま配置の順。
-    pub windows: Vec<Managed>,
-    /// 次に払い出す窓の通し番号の 1 つ前。
-    pub next_id: u64,
-    /// 表示中のワークスペース（0 始まり）。
-    pub active_ws: u8,
-    /// フォーカス順の刻み。
-    pub focus_counter: u64,
+    /// 配置・フォーカスを決める状態遷移エンジン。
+    pub core: ContrastCore,
+    /// core の ExternalKey とシェル側の窓・出力の対応。
+    pub shell: Shell,
     /// フォーカス枠の四辺（上・下・左・右）。Id を保って描画の差分追跡を効かせる。
     pub border_buffers: [SolidColorBuffer; 4],
     /// キーバインドとして握りつぶした押下中のキー（離したときも素通ししない）。
@@ -87,6 +83,11 @@ impl Contrast {
         seat.add_pointer();
 
         let socket_name = Self::init_wayland_listener(display, event_loop);
+        let core = ContrastCore::new(
+            contrast_core::CoreConfig::new(policy.workspace_count()),
+            contrast_core::DefaultPolicy::new(),
+            contrast_core::Columns::new(),
+        );
 
         Self {
             start_time: std::time::Instant::now(),
@@ -95,10 +96,8 @@ impl Contrast {
             space: Space::default(),
             loop_signal: event_loop.get_signal(),
             policy,
-            windows: Vec::new(),
-            next_id: 0,
-            active_ws: 0,
-            focus_counter: 0,
+            core,
+            shell: Shell::default(),
             border_buffers: Default::default(),
             suppressed_keys: Vec::new(),
             xdg_shell_state,

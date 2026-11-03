@@ -1,6 +1,6 @@
 //! 入力: winit からのキー・ポインタイベントを処理し、キーバインドを意味操作に変える。
 
-pub mod action;
+pub mod bindings;
 pub mod debug;
 
 use smithay::{
@@ -43,14 +43,9 @@ impl Contrast {
             })
     }
 
-    /// 座標の下の窓にフォーカスを移す。窓の外（空き領域）なら何もしない。
-    pub fn focus_at(&mut self, pos: Point<f64, Logical>) {
-        let Some(m) = self.visible_window_at(pos.x.floor() as i32, pos.y.floor() as i32) else {
-            return;
-        };
-        let (id, window) = (m.id, m.window.clone());
-        tracing::info!("click focus window={} x={} y={}", id, pos.x, pos.y);
-        self.focus_window(Some(&window));
+    /// 座標の下の窓へのフォーカスを core に要求する。窓の外（空き領域）なら何もしない。
+    pub fn click_focus(&mut self, pos: Point<f64, Logical>) {
+        self.focus_at(pos.x, pos.y);
     }
 
     /// winit からの入力イベントを 1 つ処理する。
@@ -82,7 +77,7 @@ impl Contrast {
                 let serial = SERIAL_COUNTER.next_serial();
                 let state = event.state();
                 if state == ButtonState::Pressed && !pointer.is_grabbed() {
-                    self.focus_at(pointer.current_location());
+                    self.click_focus(pointer.current_location());
                 }
                 pointer.button(
                     self,

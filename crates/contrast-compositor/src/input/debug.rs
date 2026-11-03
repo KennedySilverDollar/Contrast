@@ -69,22 +69,33 @@ impl Contrast {
                 }
             }
             (Some("click"), Some(x), Some(y)) => match (x.parse::<f64>(), y.parse::<f64>()) {
-                (Ok(x), Ok(y)) => self.focus_at((x, y).into()),
+                (Ok(x), Ok(y)) => self.focus_at(x, y),
                 _ => tracing::warn!(line, "debug: bad click"),
             },
             (Some("state"), None, None) => {
-                let focused = self.focused_index().map(|i| self.windows[i].id);
-                for m in &self.windows {
+                use contrast_core::IdKind;
+                let view = self.core.view();
+                for (key, window) in &self.shell.windows {
+                    let Some(w) = view.window_id(*key).and_then(|id| view.window(id)) else {
+                        continue;
+                    };
                     tracing::info!(
-                        window = m.id,
-                        workspace = m.workspace + 1,
-                        location = ?self.space.element_location(&m.window),
+                        window = w.id.raw(),
+                        workspace = w.workspace.get() + 1,
+                        visible = w.visible,
+                        state = ?w.state,
+                        location = ?self.space.element_location(window),
                         "debug state"
                     );
                 }
+                let shown = self
+                    .shell
+                    .output_key
+                    .and_then(|k| view.output_id(k))
+                    .and_then(|o| view.shown_workspace(o));
                 tracing::info!(
-                    active_workspace = self.active_ws + 1,
-                    focused = ?focused,
+                    shown_workspace = ?shown.map(|i| i.get() + 1),
+                    focused = ?view.focus().map(|id| id.raw()),
                     "debug state"
                 );
             }
