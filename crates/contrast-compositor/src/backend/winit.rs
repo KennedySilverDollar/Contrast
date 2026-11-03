@@ -64,7 +64,7 @@ pub fn init_winit(
                 tracing::info!(?size, "output resized");
                 state.relayout();
             }
-            WinitEvent::Input(_event) => {}
+            WinitEvent::Input(event) => state.process_input_event(event),
             WinitEvent::Redraw => {
                 crate::render::render_frame(state, &mut backend, &output, &mut damage_tracker);
                 backend.window().request_redraw();

@@ -4,7 +4,7 @@ use std::{ffi::OsString, sync::Arc};
 
 use smithay::{
     desktop::{PopupManager, Space, Window},
-    input::{Seat, SeatState},
+    input::{Seat, SeatState, keyboard::Keycode},
     reexports::{
         calloop::{EventLoop, Interest, LoopSignal, Mode, PostAction, generic::Generic},
         wayland_server::{
@@ -48,6 +48,8 @@ pub struct Contrast {
     pub active_ws: u8,
     /// フォーカス順の刻み。
     pub focus_counter: u64,
+    /// キーバインドとして握りつぶした押下中のキー（離したときも素通ししない）。
+    pub suppressed_keys: Vec<Keycode>,
 
     pub xdg_shell_state: XdgShellState,
     pub compositor_state: CompositorState,
@@ -92,6 +94,7 @@ impl Contrast {
             next_id: 0,
             active_ws: 0,
             focus_counter: 0,
+            suppressed_keys: Vec::new(),
             xdg_shell_state,
             compositor_state,
             shm_state,

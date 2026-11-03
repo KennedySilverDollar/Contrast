@@ -5,6 +5,7 @@
 
 mod backend;
 mod handler;
+mod input;
 mod render;
 mod state;
 mod wm;
@@ -21,6 +22,7 @@ pub fn run(policy: Box<dyn Policy>) -> Result<(), Box<dyn std::error::Error>> {
     let mut state = Contrast::new(&mut event_loop, display, policy);
 
     backend::winit::init_winit(&mut event_loop, &mut state)?;
+    input::debug::init(&mut event_loop);
 
     tracing::info!(
         socket = ?state.socket_name,
