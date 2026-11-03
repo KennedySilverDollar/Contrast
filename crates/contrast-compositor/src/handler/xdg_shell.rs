@@ -60,10 +60,10 @@ pub fn handle_commit(state: &mut Contrast, surface: &WlSurface) {
 /// ポップアップの commit。初回 configure を送る。
 fn handle_popup_commit(popups: &mut PopupManager, surface: &WlSurface) {
     popups.commit(surface);
-    if let Some(PopupKind::Xdg(xdg)) = popups.find_popup(surface) {
-        if !xdg.is_initial_configure_sent() {
-            xdg.send_configure().expect("initial configure failed");
-        }
+    if let Some(PopupKind::Xdg(xdg)) = popups.find_popup(surface)
+        && !xdg.is_initial_configure_sent()
+    {
+        xdg.send_configure().expect("initial configure failed");
     }
 }
 
