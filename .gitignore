@@ -1,1 +1,3 @@
 /target
+.cc-logs/
+mutants.out*/
