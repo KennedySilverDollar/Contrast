@@ -14,6 +14,7 @@ CDL（Contrast Document Language）は別リポジトリ。contrast-core は CDL
    - `crates/contrast-core/tests/spec/`
    - `crates/contrast-core/src/verification/spec/`
    - `CLAUDE.md`, `.claude/`, `docs/core-spec.md`, `docs/core-plan.md`, 各 `Cargo.toml`
+   - `scripts/`, `.github/`, `rust-toolchain.toml`, `flake.nix`, 各 `clippy.toml` / `rustfmt.toml` / `deny.toml`
 2. 破壊的操作をしない: rm、ファイル削除、`git reset`、`git clean`、
    `git checkout`、`git restore`、`git push`、`git rebase`、`git stash drop`。
    必要に見えたら実行せず、報告に「提案」として書いて止まる。

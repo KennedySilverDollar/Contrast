@@ -1,0 +1,49 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cargo build:*)",
+      "Bash(cargo test:*)",
+      "Bash(cargo clippy:*)",
+      "Bash(cargo fmt:*)",
+      "Bash(cargo kani:*)",
+      "Bash(cargo mutants:*)",
+      "Bash(scripts/verify.sh:*)",
+      "Bash(scripts/check-layering.sh:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(cargo doc:*)",
+      "Bash(cargo llvm-cov:*)"
+    ],
+    "deny": [
+      "Bash(rm:*)",
+      "Bash(git reset:*)",
+      "Bash(git clean:*)",
+      "Bash(git checkout:*)",
+      "Bash(git restore:*)",
+      "Bash(git rebase:*)",
+      "Bash(git stash:*)",
+      "Bash(git push:*)",
+      "Bash(cargo add:*)",
+      "Edit(./crates/contrast-core/tests/spec/**)",
+      "Write(./crates/contrast-core/tests/spec/**)",
+      "Edit(./crates/contrast-core/src/verification/spec/**)",
+      "Write(./crates/contrast-core/src/verification/spec/**)",
+      "Edit(./**/Cargo.toml)",
+      "Write(./**/Cargo.toml)",
+      "Edit(./CLAUDE.md)",
+      "Edit(./.claude/**)",
+      "Write(./.claude/**)",
+      "Edit(./docs/core-spec.md)",
+      "Edit(./docs/core-plan.md)",
+      "Edit(./scripts/**)",
+      "Write(./scripts/**)",
+      "Edit(./.github/**)",
+      "Write(./.github/**)",
+      "Edit(./rust-toolchain.toml)",
+      "Write(./rust-toolchain.toml)"
+    ]
+  }
+}

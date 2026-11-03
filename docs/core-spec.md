@@ -55,6 +55,14 @@ contrast (bin) ──┬──> contrast-policy-cdl ──> cdl（別リポジ�
 - `WindowMeta { app_id: Option<String>, title: Option<String>, is_dialog: bool, requested_size: Option<Size> }`
 - `CoreConfig { workspace_count: u8 }`（1〜32、既定 9）。範囲外は `Core::new` が 1〜32 に丸める。
 
+### ID と対応表（P2 で確定）
+
+- `IdKind` トレイト（`from_raw` / `raw`）を 3 つの ID 型（OutputId / WindowId / WorkspaceId）が実装する。
+- `IdGen<T>::new()` は raw = 1 から払い出す。`starting_at(n)` はテストと Kani 用。
+  現在値が `u64::MAX` のとき `Err(IdExhausted)`（以後も同じ）。
+- `KeyMap<T>` は key と id の双方向表。`insert` は key か id の重複で `Err(DuplicateKey)`、
+  `remove_by_key` は未登録で `Err(UnknownKey)`。Err のとき表は変わらない。
+
 ## 4. 不変条件
 
 `check_invariants()` が I1〜I6 を検査し、テストと Kani の両方から呼ぶ。I7・I8 は状態機械テストで確認する。
