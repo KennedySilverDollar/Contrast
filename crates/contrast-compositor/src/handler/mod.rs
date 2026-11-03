@@ -1,6 +1,9 @@
-//! Wayland プロトコルのハンドラ実装（compositor / shm / seat / data device / output / xdg-shell）。
+//! Wayland プロトコルのハンドラ実装（compositor / shm / seat / data device / output / xdg-shell / xdg-decoration）。
 
+mod decoration;
 mod xdg_shell;
+
+pub use decoration::fmt_id;
 
 use smithay::{
     backend::renderer::utils::on_commit_buffer_handler,

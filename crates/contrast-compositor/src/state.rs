@@ -16,7 +16,7 @@ use smithay::{
         compositor::{CompositorClientState, CompositorState},
         output::OutputManagerState,
         selection::data_device::DataDeviceState,
-        shell::xdg::XdgShellState,
+        shell::xdg::{XdgShellState, decoration::XdgDecorationState},
         shm::ShmState,
         socket::ListeningSocketSource,
     },
@@ -52,6 +52,7 @@ pub struct Contrast {
     pub suppressed_keys: Vec<Keycode>,
 
     pub xdg_shell_state: XdgShellState,
+    pub xdg_decoration_state: XdgDecorationState,
     pub compositor_state: CompositorState,
     pub shm_state: ShmState,
     pub output_manager_state: OutputManagerState,
@@ -72,6 +73,7 @@ impl Contrast {
 
         let compositor_state = CompositorState::new::<Self>(&dh);
         let xdg_shell_state = XdgShellState::new::<Self>(&dh);
+        let xdg_decoration_state = XdgDecorationState::new::<Self>(&dh);
         let shm_state = ShmState::new::<Self>(&dh, vec![]);
         let output_manager_state = OutputManagerState::new_with_xdg_output::<Self>(&dh);
         let mut seat_state = SeatState::new();
@@ -96,6 +98,7 @@ impl Contrast {
             focus_counter: 0,
             suppressed_keys: Vec::new(),
             xdg_shell_state,
+            xdg_decoration_state,
             compositor_state,
             shm_state,
             output_manager_state,
