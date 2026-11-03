@@ -77,3 +77,55 @@ Claude Code はここに追記する。人間が回答したら「回答:」行�
   - C: verify.sh の clippy を `--all-targets` から、`--test spec` だけ別の lint 設定で走らせる形に分ける（scripts/ は人間が変える）。
 - 止めた作業: verify.sh を緑にすること（clippy 以降のステップは個別に確認済み）
 - 回答: （人間が記入）
+
+### Q6 (proto) 公開 API に名前だけあって形が決まっていない型
+- 該当箇所: `docs/core-spec.md` 5 節（`OutputName`、`WindowState`、`StateView`、`InvariantViolation`、`StateSnapshot`、`CoreConfig`）
+- 疑問: 名前とおおまかな役割だけで、中身・コンストラクタが決まっていない。
+- 暫定（proto/core-wire で実装したもの）:
+  - `OutputName(String)`: `new(impl Into<String>)` と `as_str()`。
+  - `WindowState { Tiled, Floating, Fullscreen }`（3 節の表どおり）。
+  - `CoreConfig { pub workspace_count: u8 }` + `new(n)`、`Default` は 9。
+  - `StateView`: `focus()`、`workspace_count()`、`window_id(key)`、`window_key(id)`、`output_id(key)`、
+    `shown_workspace(output)`、`workspace_windows(index)`、`window(id) -> Option<WindowView>`、`visible_windows()`。
+    `WindowView { id, rect: Option<Rect>, state, workspace, visible }`。
+  - `InvariantViolation { I1(WindowId), I2(WorkspaceIndex), I3(OutputId), I4(WindowId), I5(WindowId), I6 }`。
+  - `StateSnapshot`: 状態の複製（中身は非公開、`PartialEq + Debug`）。
+- 止めた作業: なし
+- 回答: （人間が記入）
+
+### Q7 (proto) 表示に戻ったワークスペースの窓に Configure を出すか
+- 該当箇所: `docs/core-spec.md` 5 節「Configure は表示中ワークスペースにあり、矩形か状態が変わった窓にだけ出す」
+- 疑問: ワークスペースを切り替えて戻したとき、窓の矩形が前回と同じなら Configure は出ない。
+  シェルはどの窓をどこに描くかを Configure だけからは知れない。
+- 暫定: 仕様の文言どおり、変化がなければ出さない。シェル（contrast-compositor）は ShowWorkspace / Damage を受けたら
+  `StateView::visible_windows()` を読んで描画する窓を合わせ直す。
+- 候補: A（現状）文言どおり。B ShowWorkspace の対象ワークスペースの全窓に Configure を出す。
+- 止めた作業: なし
+- 回答: （人間が記入）
+
+### Q8 (proto) フォーカス窓が WindowUnmapped されたときのフォーカス移動先
+- 該当箇所: `docs/core-spec.md` 7 節（D3・D13 は出力削除と MoveToWorkspace だけを決めている）
+- 疑問: フォーカス窓が閉じたとき、どこへフォーカスを移すかが決まっていない。
+- 暫定: プロトタイプの挙動に合わせ、同じワークスペースの順序列で「閉じた窓と同じ位置に来た窓（右隣）、
+  末尾だったなら新しい末尾（左隣）」。ワークスペースが表示中でなければ None。
+- 候補: A（現状）隣。B D3 と同じく順序列先頭。C フォーカス履歴の最新（D12 と同じ）。
+- 止めた作業: なし
+- 回答: （人間が記入）
+
+### Q9 (proto) Tiled 窓が作業領域の幅より多いとき
+- 該当箇所: `docs/core-spec.md` 6 節（`Layout(LayoutError)`）、`Rect::split_columns`
+- 疑問: `Columns` は窓数が幅より多いと `AreaTooSmall` を返し、`WindowMapped` 自体が Err になる。
+  シェル側には core が知らない窓が残る。
+- 暫定: 仕様どおり Err。シェルはログを出し、その窓を管理しない（実用上 928px に 929 枚は来ない）。
+- 候補: A（現状）。B Layout が重ねて返す（I5 に反する）。C 入りきらない窓を Floating にする。
+- 止めた作業: なし
+- 回答: （人間が記入）
+
+### Q10 (proto) D8 の「最低 1px 交差するよう切り詰める」の解釈と、OutputAdded 時のフォーカス
+- 該当箇所: `docs/core-spec.md` D8、D2
+- 疑問: (a) 要求サイズが作業領域より大きいとき、どう切り詰めるか。(b) 出力 0 台で map された窓がある状態で
+  OutputAdded したとき、フォーカスを与えるか。
+- 暫定: (a) 幅・高さを作業領域に合わせて縮め、中央に置く（必ず作業領域内）。前回の浮動矩形が作業領域と
+  交差していればそのまま保つ。(b) 与えない（フォーカスは None のまま）。
+- 止めた作業: なし
+- 回答: （人間が記入）
