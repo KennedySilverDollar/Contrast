@@ -2,6 +2,8 @@
 name = "contrast-core"
 version = "0.1.0"
 edition = "2024"
+publish = false
+description = "Contrast の純粋な状態遷移エンジン（no_std・依存なし）"
 
 [lib]
 path = "src/lib.rs"
@@ -11,6 +13,7 @@ name = "spec"
 path = "tests/spec/main.rs"
 
 [features]
+default = []
 invariants = []
 
 [dependencies]
@@ -21,6 +24,7 @@ proptest-state-machine = "0.9.0"
 
 [lints.rust]
 unsafe_code = "forbid"
+missing_docs = "deny"
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)"] }
 
 [lints.clippy]

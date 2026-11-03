@@ -6,7 +6,7 @@ cd "$(git rev-parse --show-toplevel)"
 
 phase="${1:?フェーズ番号を指定 (例: 1)}"
 prompt="prompts/p${phase}.md"
-protected='^(crates/contrast-core/tests/spec/|crates/contrast-core/src/verification/spec/|CLAUDE\.md$|\.claude/|docs/core-spec\.md$|docs/core-plan\.md$|scripts/|.*Cargo\.toml$)'
+protected='^(crates/contrast-core/tests/spec/|crates/contrast-core/src/verification/spec/|CLAUDE\.md$|\.claude/|docs/core-spec\.md$|docs/core-plan\.md$|scripts/|\.github/|.*Cargo\.toml$)'
 
 [[ -f "$prompt" ]] || { echo "プロンプトがない: $prompt" >&2; exit 1; }
 

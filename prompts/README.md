@@ -1,10 +1,9 @@
 # prompts/
 
-Claude Code に渡すフェーズ別プロンプト。`scripts/cc-phase.sh N` が
-`common.md` と `pN.md` を連結して `claude -p` に渡す。
+- `p0.md`: 足場。ガードファイルを置く前に、`claude` を通常モードで起動して貼る。
+- `common.md` + `p1.md`〜`p8.md`: フェーズ別。`scripts/cc-phase.sh N` が連結して `claude -p` に渡す。
+- `run-phase.md`: 対話でフェーズを回すときの共通プロンプト。N を埋めて貼る。
 
-- P0（足場）はプロンプトなし。`docs/core-plan.md` の 3 節を手で進める。
-- 各フェーズの前に、`docs/core-plan.md` の 4 節「人間が先に書くもの」を
-  `tests/spec/` と `src/verification/spec/` に書いてコミットしておく。
-- 対話で進めたいときは、`claude` を起動して
-  「prompts/common.md と prompts/pN.md を読んで、その指示に従って」と伝えればよい。
+各フェーズの前に、`docs/core-plan.md` の 4 節「人間が先に書くもの」を
+`tests/spec/` と `src/verification/spec/` に書いてコミットしておく。
+フェーズの間に人間の仕様テストが入るので、全フェーズを 1 回のプロンプトでは回さない。

@@ -30,20 +30,23 @@
 | P7 ポリシーポート | 1日 | policy/* | 任意のポリシー出力でも不変条件が壊れない |
 | P8 硬化と API 凍結 | 2〜3日 | テスト追加のみ | 生存ミュータント 0（残すものは理由を記録）、行カバレッジ 95%、`v0.1.0` タグ |
 
-## 3. P0 足場チェックリスト（手書き）
+## 3. P0 足場（Claude Code に `prompts/p0.md` を対話で実行させる）
 
-- [ ] Cargo workspace に `crates/contrast-core` を作る（`[lib]` のみ、依存 0）
-- [ ] `rust-toolchain.toml` に stable と `x86_64-unknown-none` ターゲット、rustfmt、clippy、llvm-tools
-- [ ] flake の devShell に cargo-kani、cargo-mutants、cargo-llvm-cov、cargo-semver-checks
-- [ ] `crates/contrast-core/Cargo.toml` の `[lints]` に仕様 8 節の clippy 設定、`[features] invariants = []`
-- [ ] `clippy.toml` に `allow-unwrap-in-tests = true` と `allow-expect-in-tests = true`
-- [ ] `lib.rs` に `#![no_std]`、`extern crate alloc;`、`#![forbid(unsafe_code)]`、`#[cfg(any(kani))] mod verification;`
-- [ ] `src/verification/` の `mod.rs`、`spec/mod.rs`、`extra/mod.rs`、`tests/spec/main.rs` を置く（キット同梱）
-- [ ] 本リポジトリ同梱の CLAUDE.md、`.claude/settings.json`、`scripts/`、`prompts/`、`docs/` を配置
-- [ ] `.gitignore` に `.cc-logs/` と `mutants.out*/`
-- [ ] `scripts/*.sh` に実行権限を付ける
-- [ ] CI（verify / kani / mutants-coverage の 3 ジョブ）
-- [ ] `main` ブランチを作り、以降のフェーズはここから切る
+P0 は Cargo.toml と設定ファイルを作るので、ガードファイル（CLAUDE.md、.claude/）を置く**前**に、
+`claude` を通常モード（承認あり）で起動して `prompts/p0.md` の内容を貼る。`cc-phase.sh` は使わない。
+
+手順:
+1. docs/、scripts/、prompts/ だけを置く（CLAUDE.md と .claude/ はまだ置かない）。
+2. `claude` を起動し、prompts/p0.md を貼る。編集の承認を 1 つずつ確認する。
+3. 差分を読む。`scripts/verify.sh`（--full なし）が緑なのを自分でも確認する。
+4. CLAUDE.md と .claude/ を置き、`main` にコミットする。
+5. devShell に cargo-kani、cargo-mutants、cargo-llvm-cov、cargo-semver-checks を足す（自分で。flake は Claude Code に触らせない）。
+
+P0 の成果物: workspace、crates/contrast-core（Cargo.toml、clippy.toml、lib.rs、verification/ の mod.rs 3 つ）、
+rust-toolchain.toml、.gitignore 追記、.github/workflows/core.yml。
+
+P1 の仕様ファイルは `p1-spec/` に同梱。P1 ブランチを切ってから `p1-spec/crates/` を
+リポジトリの `crates/` に重ねてコミットする。
 
 ## 4. 人間が先に書くもの（各フェーズ）
 
