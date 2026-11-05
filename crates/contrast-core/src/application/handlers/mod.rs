@@ -70,6 +70,16 @@ fn dispatch_action(state: &mut State, action: Action) -> Result<Vec<Effect>, Cor
         Action::ToggleFloating => toggle_floating::handle(state),
         Action::ToggleFullscreen => toggle_fullscreen::handle(state),
         Action::CloseFocused => close_focused::handle(state),
+        // D45: `Scrolling` 専用の Action。実装は後続のステップで足す。
+        Action::FocusColumnFirst
+        | Action::FocusColumnLast
+        | Action::MoveColumnToFirst
+        | Action::MoveColumnToLast
+        | Action::ConsumeWindowIntoColumn
+        | Action::ExpelWindowFromColumn
+        | Action::SwitchPresetColumnWidth
+        | Action::MaximizeColumn
+        | Action::SetColumnWidth(_) => Ok(Vec::new()),
     }
 }
 

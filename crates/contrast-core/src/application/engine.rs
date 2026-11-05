@@ -5,10 +5,13 @@
 //! - I8 `apply` は State と Command だけから決まる（時刻・乱数・反復順の不定なコレクションを使わない）。
 //! - I1〜I6・I9 は各 handler と `arrange` が保ち、`check_invariants` で検査できる。
 
+use alloc::vec::Vec;
+
 use crate::application::command::Command;
 use crate::application::effect::Applied;
 use crate::application::view::StateView;
 use crate::application::{arrange, diff, handlers};
+use crate::domain::column::{LayoutMode, LayoutSettings, MAX_PRESETS, Ratio};
 use crate::domain::state::State;
 use crate::error::CoreError;
 use crate::layout::Layout;
@@ -20,13 +23,61 @@ use crate::policy::Policy;
 pub struct CoreConfig {
     /// ワークスペースの数（1〜32。範囲外は `Core::new` が丸める）。
     pub workspace_count: u8,
+    /// 窓の並べ方（D35。既定 `Equal`）。
+    layout: LayoutMode,
+    /// 新しい列の幅（D35。既定 1/2）。
+    default_column_width: Ratio,
+    /// プリセットの列幅（先頭から詰める。残りは `None`）。
+    preset_column_widths: [Option<Ratio>; MAX_PRESETS],
 }
 
 impl CoreConfig {
     /// ワークスペース数を指定して作る。
     #[must_use]
     pub const fn new(workspace_count: u8) -> Self {
-        Self { workspace_count }
+        Self {
+            workspace_count,
+            layout: LayoutSettings::DEFAULT.mode,
+            default_column_width: LayoutSettings::DEFAULT.default_width,
+            preset_column_widths: LayoutSettings::DEFAULT.presets,
+        }
+    }
+
+    /// 窓の並べ方を指定する（D35）。
+    #[must_use]
+    pub const fn with_layout(mut self, layout: LayoutMode) -> Self {
+        self.layout = layout;
+        self
+    }
+
+    /// 新しい列の幅を指定する（D35）。
+    #[must_use]
+    pub const fn with_default_column_width(mut self, width: Ratio) -> Self {
+        self.default_column_width = width;
+        self
+    }
+
+    /// プリセットの列幅を指定する（D35）。空なら既定のまま。`MAX_PRESETS`（8）を超える分は使わない。
+    #[must_use]
+    pub fn with_preset_column_widths(mut self, presets: Vec<Ratio>) -> Self {
+        if presets.is_empty() {
+            return self;
+        }
+        let mut slots = [None; MAX_PRESETS];
+        for (slot, ratio) in slots.iter_mut().zip(presets) {
+            *slot = Some(ratio);
+        }
+        self.preset_column_widths = slots;
+        self
+    }
+
+    /// `State` が持つ設定にする。
+    fn layout_settings(&self) -> LayoutSettings {
+        LayoutSettings {
+            mode: self.layout,
+            default_width: self.default_column_width,
+            presets: self.preset_column_widths,
+        }
     }
 }
 
@@ -52,8 +103,10 @@ impl<P: Policy, L: Layout> Core<P, L> {
     /// 空の状態（出力・窓なし、ワークスペース `workspace_count` 個）で作る。
     #[must_use]
     pub fn new(config: CoreConfig, policy: P, layout: L) -> Self {
+        let mut state = State::new(config.workspace_count);
+        state.layout = config.layout_settings();
         Self {
-            state: State::new(config.workspace_count),
+            state,
             policy,
             layout,
         }
