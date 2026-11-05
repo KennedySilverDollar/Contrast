@@ -36,6 +36,7 @@
           pkgs.libdrm
           pkgs.libinput
           pkgs.systemdLibs
+          pkgs.libgbm
         ];
         # winit / EGL は libwayland-client・libEGL・libxkbcommon を dlopen するので実行時に見えるようにする
         LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [
@@ -44,6 +45,7 @@
           pkgs.libGL
           pkgs.seatd
           pkgs.systemdLibs
+          pkgs.libgbm
         ];
       };
     };

@@ -33,14 +33,15 @@ pub struct ConfigSource {
 /// SIGUSR1 と `reload-config` アクションで、`source` から設定を読み直して `store` を差し替える。
 ///
 /// バックエンドは環境変数 `CONTRAST_BACKEND=winit|drm` で選ぶ。未指定で `WAYLAND_DISPLAY` か `DISPLAY` が
-/// あれば winit、無ければエラー。`drm` のときは出力を列挙してログに出し、すぐ正常終了する（フェーズ1）。
+/// あれば winit、無ければエラー。`drm` のときは出力を列挙し、最初の接続済み出力に背景色の単色を出す（フェーズ2。
+/// `CONTRAST_EXIT_AFTER` 秒、既定 30 で自動終了する）。
 pub fn run(store: Rc<ConfigStore>, source: ConfigSource) -> Result<(), Box<dyn std::error::Error>> {
     let choice = std::env::var("CONTRAST_BACKEND").ok();
     let has_host_display = ["WAYLAND_DISPLAY", "DISPLAY"]
         .iter()
         .any(|k| std::env::var_os(k).is_some_and(|v| !v.is_empty()));
     if backend::select(choice.as_deref(), has_host_display)? == backend::Kind::Drm {
-        backend::drm::enumerate()?;
+        backend::drm::run(contrast_policy::Policy::background(&*store))?;
         return Ok(());
     }
 
