@@ -1,13 +1,15 @@
 //! Wayland プロトコルのハンドラ実装（compositor / shm / seat / data device / output / xdg-shell / xdg-decoration）。
 
 mod decoration;
+mod layer_shell;
 mod xdg_shell;
 
 pub use decoration::fmt_id;
 
 use smithay::{
     backend::renderer::utils::on_commit_buffer_handler,
-    delegate_compositor, delegate_data_device, delegate_output, delegate_seat, delegate_shm,
+    delegate_compositor, delegate_data_device, delegate_output, delegate_primary_selection,
+    delegate_seat, delegate_shm,
     input::{Seat, SeatHandler, SeatState, pointer::CursorImageStatus},
     reexports::wayland_server::{
         Client, Resource,
@@ -25,6 +27,9 @@ use smithay::{
             data_device::{
                 ClientDndGrabHandler, DataDeviceHandler, DataDeviceState, ServerDndGrabHandler,
                 set_data_device_focus,
+            },
+            primary_selection::{
+                PrimarySelectionHandler, PrimarySelectionState, set_primary_focus,
             },
         },
         shm::{ShmHandler, ShmState},
@@ -59,6 +64,7 @@ impl CompositorHandler for Contrast {
             }
         }
         xdg_shell::handle_commit(self, surface);
+        layer_shell::handle_commit(self, surface);
     }
 }
 
@@ -86,7 +92,12 @@ impl SeatHandler for Contrast {
     fn focus_changed(&mut self, seat: &Seat<Self>, focused: Option<&WlSurface>) {
         let dh = &self.display_handle;
         let client = focused.and_then(|s| dh.get_client(s.id()).ok());
-        set_data_device_focus(dh, seat, client);
+        set_data_device_focus(dh, seat, client.clone());
+        set_primary_focus(dh, seat, client);
+        // 窓や別の面にフォーカスが移ったら、レイヤー面のフォーカスは外れている。
+        if self.layer_focus.as_ref() != focused {
+            self.layer_focus = None;
+        }
     }
 }
 
@@ -100,6 +111,12 @@ impl DataDeviceHandler for Contrast {
     }
 }
 
+impl PrimarySelectionHandler for Contrast {
+    fn primary_selection_state(&self) -> &PrimarySelectionState {
+        &self.primary_selection_state
+    }
+}
+
 impl ClientDndGrabHandler for Contrast {}
 impl ServerDndGrabHandler for Contrast {}
 
@@ -109,4 +126,5 @@ delegate_compositor!(Contrast);
 delegate_shm!(Contrast);
 delegate_seat!(Contrast);
 delegate_data_device!(Contrast);
+delegate_primary_selection!(Contrast);
 delegate_output!(Contrast);

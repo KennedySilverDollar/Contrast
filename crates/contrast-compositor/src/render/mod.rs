@@ -57,6 +57,7 @@ pub fn render_frame(
 
     state.space.refresh();
     state.popups.cleanup();
+    smithay::desktop::layer_map_for_output(output).cleanup();
     let _ = state.display_handle.flush_clients();
 }
 

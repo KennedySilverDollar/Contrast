@@ -65,6 +65,11 @@ pub fn init_winit(
                     None,
                 );
                 tracing::info!(?size, "output resized");
+                {
+                    let mut map = smithay::desktop::layer_map_for_output(&output);
+                    let changed = map.arrange();
+                    tracing::info!(changed, zone = ?map.non_exclusive_zone(), "layers re-arranged");
+                }
                 state.output_changed(output_rect(size));
             }
             WinitEvent::Input(event) => state.process_input_event(event),

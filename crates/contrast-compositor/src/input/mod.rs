@@ -34,6 +34,22 @@ fn to_mods(m: &ModifiersState) -> Mods {
 impl Contrast {
     /// 座標の下にある surface と、その surface の原点の位置。
     fn surface_under(&self, pos: Point<f64, Logical>) -> Option<(WlSurface, Point<f64, Logical>)> {
+        use smithay::{desktop::layer_map_for_output, wayland::shell::wlr_layer::Layer};
+        let output = self.space.outputs().next().cloned();
+        let layer_hit = |layers: [Layer; 2]| {
+            let output = output.as_ref()?;
+            let map = layer_map_for_output(output);
+            layers.into_iter().find_map(|l| {
+                let layer = map.layer_under(l, pos)?;
+                let geo = map.layer_geometry(layer)?;
+                layer
+                    .surface_under(pos - geo.loc.to_f64(), WindowSurfaceType::ALL)
+                    .map(|(s, p)| (s, (p + geo.loc).to_f64()))
+            })
+        };
+        if let Some(hit) = layer_hit([Layer::Overlay, Layer::Top]) {
+            return Some(hit);
+        }
         self.space
             .element_under(pos)
             .and_then(|(window, location)| {
@@ -41,10 +57,14 @@ impl Contrast {
                     .surface_under(pos - location.to_f64(), WindowSurfaceType::ALL)
                     .map(|(s, p)| (s, (p + location).to_f64()))
             })
+            .or_else(|| layer_hit([Layer::Bottom, Layer::Background]))
     }
 
     /// 座標の下の窓へのフォーカスを core に要求する。窓の外（空き領域）なら何もしない。
     pub fn click_focus(&mut self, pos: Point<f64, Logical>) {
+        if self.click_layer(pos) {
+            return;
+        }
         self.focus_at(pos.x, pos.y);
     }
 

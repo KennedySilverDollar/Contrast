@@ -16,8 +16,11 @@ use smithay::{
     wayland::{
         compositor::{CompositorClientState, CompositorState},
         output::OutputManagerState,
-        selection::data_device::DataDeviceState,
-        shell::xdg::{XdgShellState, decoration::XdgDecorationState},
+        selection::{data_device::DataDeviceState, primary_selection::PrimarySelectionState},
+        shell::{
+            wlr_layer::WlrLayerShellState,
+            xdg::{XdgShellState, decoration::XdgDecorationState},
+        },
         shm::ShmState,
         socket::ListeningSocketSource,
     },
@@ -66,6 +69,10 @@ pub struct Contrast {
     pub output_manager_state: OutputManagerState,
     pub seat_state: SeatState<Contrast>,
     pub data_device_state: DataDeviceState,
+    pub primary_selection_state: PrimarySelectionState,
+    pub layer_shell_state: WlrLayerShellState,
+    /// キーボードフォーカスを持っているレイヤー面（無ければ core のフォーカス窓）。
+    pub layer_focus: Option<smithay::reexports::wayland_server::protocol::wl_surface::WlSurface>,
     pub popups: PopupManager,
     pub seat: Seat<Self>,
 }
@@ -88,6 +95,8 @@ impl Contrast {
         let output_manager_state = OutputManagerState::new_with_xdg_output::<Self>(&dh);
         let mut seat_state = SeatState::new();
         let data_device_state = DataDeviceState::new::<Self>(&dh);
+        let primary_selection_state = PrimarySelectionState::new::<Self>(&dh);
+        let layer_shell_state = WlrLayerShellState::new::<Self>(&dh);
         let mut seat: Seat<Self> = seat_state.new_wl_seat(&dh, "contrast");
         seat.add_keyboard(Default::default(), 200, 25)
             .expect("failed to add keyboard");
@@ -121,6 +130,9 @@ impl Contrast {
             output_manager_state,
             seat_state,
             data_device_state,
+            primary_selection_state,
+            layer_shell_state,
+            layer_focus: None,
             popups: PopupManager::default(),
             seat,
         }

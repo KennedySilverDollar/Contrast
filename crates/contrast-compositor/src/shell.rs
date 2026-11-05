@@ -376,6 +376,12 @@ impl Contrast {
         );
     }
 
+    /// キーボードフォーカスを core のフォーカス窓に戻す（レイヤー面が消えたあと）。
+    pub fn restore_window_focus(&mut self) {
+        let focus = self.core.view().focus();
+        self.set_focus(focus);
+    }
+
     /// SetFocus: キーボードフォーカスと activated 状態を合わせる。
     fn set_focus(&mut self, focus: Option<WindowId>) {
         let target = focus.and_then(|id| self.window_of_id(id));
