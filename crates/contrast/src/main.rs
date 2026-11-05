@@ -5,6 +5,7 @@
 //! 壊れているときは診断を error でログに出す。端末（既定値の Alt+Return）は `CONTRAST_TERMINAL`、無ければ `foot`。
 
 use std::io::IsTerminal;
+use std::process::ExitCode;
 use std::rc::Rc;
 
 use contrast_compositor::ConfigSource;
@@ -13,7 +14,17 @@ use contrast_policy::{
 };
 use contrast_policy_cdl::CdlLoader;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> ExitCode {
+    match run() {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("contrast: {e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn run() -> Result<(), Box<dyn std::error::Error>> {
     let filter = tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info,smithay=warn"));
     tracing_subscriber::fmt()

@@ -31,7 +31,19 @@ pub struct ConfigSource {
 /// コンポジタを起動し、終了まで戻らない。`store` が配置・キーバインド・見た目の問い合わせ先。
 ///
 /// SIGUSR1 と `reload-config` アクションで、`source` から設定を読み直して `store` を差し替える。
+///
+/// バックエンドは環境変数 `CONTRAST_BACKEND=winit|drm` で選ぶ。未指定で `WAYLAND_DISPLAY` か `DISPLAY` が
+/// あれば winit、無ければエラー。`drm` のときは出力を列挙してログに出し、すぐ正常終了する（フェーズ1）。
 pub fn run(store: Rc<ConfigStore>, source: ConfigSource) -> Result<(), Box<dyn std::error::Error>> {
+    let choice = std::env::var("CONTRAST_BACKEND").ok();
+    let has_host_display = ["WAYLAND_DISPLAY", "DISPLAY"]
+        .iter()
+        .any(|k| std::env::var_os(k).is_some_and(|v| !v.is_empty()));
+    if backend::select(choice.as_deref(), has_host_display)? == backend::Kind::Drm {
+        backend::drm::enumerate()?;
+        return Ok(());
+    }
+
     let mut event_loop: EventLoop<Contrast> = EventLoop::try_new()?;
     // SIGUSR1 はスレッドを作る前にブロックして calloop で受ける（既定の動作は終了）。
     let signals = Signals::new(&[Signal::SIGUSR1])?;

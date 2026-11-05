@@ -31,12 +31,19 @@
           pkgs.libGL
           pkgs.foot
           pkgs.wayland-utils
+          # DRM バックエンド（libseat / udev / drm の sys クレートが pkg-config で探す）
+          pkgs.seatd
+          pkgs.libdrm
+          pkgs.libinput
+          pkgs.systemdLibs
         ];
         # winit / EGL は libwayland-client・libEGL・libxkbcommon を dlopen するので実行時に見えるようにする
         LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [
           pkgs.wayland
           pkgs.libxkbcommon
           pkgs.libGL
+          pkgs.seatd
+          pkgs.systemdLibs
         ];
       };
     };
