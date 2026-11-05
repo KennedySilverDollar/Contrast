@@ -36,6 +36,9 @@ use crate::ConfigSource;
 
 use crate::shell::{ContrastCore, Shell};
 
+/// dmabuf をレンダラーにインポートできるか試す関数（できれば `true`）。
+pub type DmabufImporter = Box<dyn FnMut(&Dmabuf) -> bool>;
+
 /// コンポジタの状態。calloop のイベントループが `&mut` で持ち回る。
 pub struct Contrast {
     /// 起動時刻（frame コールバックの時刻に使う）。
@@ -84,7 +87,7 @@ pub struct Contrast {
     /// 公開した linux-dmabuf のグローバル（`enable_dmabuf` の後）。
     pub dmabuf_global: Option<DmabufGlobal>,
     /// クライアントの dmabuf をレンダラーにインポートできるか試す関数（バックエンドが入れる）。
-    pub dmabuf_importer: Option<Box<dyn FnMut(&Dmabuf) -> bool>>,
+    pub dmabuf_importer: Option<DmabufImporter>,
     /// VT を切り替える関数（DRM バックエンドだけが入れる）。キーボードをコンポジタが持つので、これが無いと VT を移れない。
     pub vt_switch: Option<Box<dyn FnMut(i32)>>,
     /// キー処理の中で見つかった VT 切り替えの要求（キー処理が終わってから実行する）。
@@ -162,7 +165,7 @@ impl Contrast {
         &mut self,
         formats: impl IntoIterator<Item = Format>,
         feedback: Option<DmabufFeedback>,
-        importer: Box<dyn FnMut(&Dmabuf) -> bool>,
+        importer: DmabufImporter,
     ) {
         let formats: Vec<Format> = formats.into_iter().collect();
         tracing::info!(
