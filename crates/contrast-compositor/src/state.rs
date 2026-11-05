@@ -75,6 +75,10 @@ pub struct Contrast {
     pub layer_focus: Option<smithay::reexports::wayland_server::protocol::wl_surface::WlSurface>,
     pub popups: PopupManager,
     pub seat: Seat<Self>,
+    /// VT を切り替える関数（DRM バックエンドだけが入れる）。キーボードをコンポジタが持つので、これが無いと VT を移れない。
+    pub vt_switch: Option<Box<dyn FnMut(i32)>>,
+    /// キー処理の中で見つかった VT 切り替えの要求（キー処理が終わってから実行する）。
+    pub pending_vt: Option<i32>,
 }
 
 impl Contrast {
@@ -98,8 +102,7 @@ impl Contrast {
         let primary_selection_state = PrimarySelectionState::new::<Self>(&dh);
         let layer_shell_state = WlrLayerShellState::new::<Self>(&dh);
         let mut seat: Seat<Self> = seat_state.new_wl_seat(&dh, "contrast");
-        seat.add_keyboard(Default::default(), 200, 25)
-            .expect("failed to add keyboard");
+        add_keyboard(&mut seat);
         seat.add_pointer();
 
         let socket_name = Self::init_wayland_listener(display, event_loop);
@@ -135,6 +138,8 @@ impl Contrast {
             layer_focus: None,
             popups: PopupManager::default(),
             seat,
+            vt_switch: None,
+            pending_vt: None,
         }
     }
 
@@ -171,6 +176,31 @@ impl Contrast {
             .expect("failed to insert display source");
 
         socket_name
+    }
+}
+
+/// キーボードを seat に足す。配列は `CONTRAST_XKB_LAYOUT` / `_VARIANT` / `_MODEL` / `_OPTIONS`、
+/// 未指定は xkbcommon の既定。指定が不正でキーマップを作れなければ、警告して既定にする。
+fn add_keyboard(seat: &mut Seat<Contrast>) {
+    let var = |name: &str| std::env::var(name).unwrap_or_default();
+    let (layout, variant, model) = (
+        var("CONTRAST_XKB_LAYOUT"),
+        var("CONTRAST_XKB_VARIANT"),
+        var("CONTRAST_XKB_MODEL"),
+    );
+    let options = std::env::var("CONTRAST_XKB_OPTIONS").ok();
+    let config = smithay::input::keyboard::XkbConfig {
+        layout: &layout,
+        variant: &variant,
+        model: &model,
+        options: options.clone(),
+        ..Default::default()
+    };
+    if let Err(e) = seat.add_keyboard(config, 200, 25) {
+        tracing::warn!(?e, %layout, %variant, %model, ?options, "xkb: invalid keymap settings, using the default");
+        if let Err(e) = seat.add_keyboard(Default::default(), 200, 25) {
+            tracing::error!(?e, "xkb: failed to add a keyboard");
+        }
     }
 }
 

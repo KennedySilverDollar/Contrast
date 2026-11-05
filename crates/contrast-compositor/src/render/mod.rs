@@ -6,9 +6,13 @@ use std::time::Duration;
 use smithay::{
     backend::renderer::{
         damage::OutputDamageTracker,
-        element::{Kind, solid::SolidColorRenderElement},
+        element::{
+            Kind, render_elements, solid::SolidColorRenderElement,
+            surface::WaylandSurfaceRenderElement,
+        },
         gles::{GlesRenderer, GlesTarget},
     },
+    desktop::space::SpaceRenderElements,
     output::Output,
 };
 
@@ -36,6 +40,33 @@ impl fmt::Display for RenderError {
 }
 
 impl std::error::Error for RenderError {}
+
+render_elements! {
+    /// DRM の `DrmOutput::render_frame` に渡す要素。`render_output` と同じく、枠・カーソル（custom）が前、Space（窓とレイヤー面）が後ろ。
+    pub SceneElement<=GlesRenderer>;
+    /// 枠の帯とカーソル。
+    Solid=SolidColorRenderElement,
+    /// Space の要素（窓・レイヤー面・popup）。
+    Space=SpaceRenderElements<GlesRenderer, WaylandSurfaceRenderElement<GlesRenderer>>,
+}
+
+/// 出力 1 枚分の要素を前から順に集める。`cursor` があれば最前面。`render_scene` と同じ値・順序。
+pub fn scene_elements(
+    state: &mut Contrast,
+    renderer: &mut GlesRenderer,
+    output: &Output,
+    cursor: Option<SolidColorRenderElement>,
+) -> Result<Vec<SceneElement>, RenderError> {
+    let borders = border_elements(state);
+    let space =
+        smithay::desktop::space::space_render_elements(renderer, [&state.space], output, 1.0)
+            .map_err(|e| RenderError::Render(e.to_string()))?;
+    let mut elements: Vec<SceneElement> = Vec::with_capacity(1 + borders.len() + space.len());
+    elements.extend(cursor.map(SceneElement::Solid));
+    elements.extend(borders.into_iter().map(SceneElement::Solid));
+    elements.extend(space.into_iter().map(SceneElement::Space));
+    Ok(elements)
+}
 
 /// 出力 1 枚分の絵（背景・窓・レイヤー面・枠）を `framebuffer` に描く。バックエンドには依存しない。
 ///

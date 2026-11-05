@@ -6,7 +6,7 @@ pub mod debug;
 use smithay::{
     backend::input::{
         AbsolutePositionEvent, Axis, AxisSource, ButtonState, Event, InputBackend, InputEvent,
-        KeyState, KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent,
+        KeyState, KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent, PointerMotionEvent,
     },
     desktop::WindowSurfaceType,
     input::{
@@ -92,6 +92,32 @@ impl Contrast {
                 );
                 pointer.frame(self);
             }
+            InputEvent::PointerMotion { event, .. } => {
+                let Some(output) = self.space.outputs().next().cloned() else {
+                    return;
+                };
+                let Some(output_geo) = self.space.output_geometry(&output) else {
+                    return;
+                };
+                let Some(pointer) = self.seat.get_pointer() else {
+                    return;
+                };
+                let pos = clamp_to(
+                    pointer.current_location() + event.delta(),
+                    output_geo.to_f64(),
+                );
+                let under = self.surface_under(pos);
+                pointer.motion(
+                    self,
+                    under,
+                    &MotionEvent {
+                        location: pos,
+                        serial: SERIAL_COUNTER.next_serial(),
+                        time: event.time_msec(),
+                    },
+                );
+                pointer.frame(self);
+            }
             InputEvent::PointerButton { event, .. } => {
                 let pointer = self.seat.get_pointer().expect("seat has pointer");
                 let serial = SERIAL_COUNTER.next_serial();
@@ -158,6 +184,14 @@ impl Contrast {
                     return FilterResult::Forward;
                 };
                 let name = xkb::keysym_get_name(sym);
+                if let Some(vt) =
+                    vt_number(&xkb::keysym_get_name(handle.modified_sym()), &name, mods)
+                {
+                    tracing::info!(vt, "keybinding: switch vt");
+                    state.pending_vt = Some(vt);
+                    state.suppressed_keys.push(keycode);
+                    return FilterResult::Intercept(None);
+                }
                 match state.policy.resolve_key(to_mods(mods), &name) {
                     Some(action) => {
                         tracing::info!(key = %name, ?action, "keybinding");
@@ -168,8 +202,74 @@ impl Contrast {
                 }
             },
         );
+        if let Some(vt) = self.pending_vt.take() {
+            match self.vt_switch.as_mut() {
+                Some(switch) => switch(vt),
+                None => tracing::info!(vt, "vt switch ignored: not on a session backend"),
+            }
+        }
         if let Some(Some(action)) = action {
             self.run_action(action);
         }
+    }
+}
+
+/// 座標を矩形の中に収める（右端・下端は含まない最後の画素まで）。
+fn clamp_to(
+    pos: Point<f64, Logical>,
+    rect: smithay::utils::Rectangle<f64, Logical>,
+) -> Point<f64, Logical> {
+    let max_x = (rect.loc.x + rect.size.w - 1.0).max(rect.loc.x);
+    let max_y = (rect.loc.y + rect.size.h - 1.0).max(rect.loc.y);
+    (
+        pos.x.clamp(rect.loc.x, max_x),
+        pos.y.clamp(rect.loc.y, max_y),
+    )
+        .into()
+}
+
+/// VT 切り替えのキーなら、行き先の番号（1〜12）。`XF86Switch_VT_n`、または Ctrl+Alt を押した `F<n>`。
+fn vt_number(modified: &str, raw: &str, mods: &ModifiersState) -> Option<i32> {
+    let parse = |s: &str, prefix: &str| -> Option<i32> {
+        let n = s.strip_prefix(prefix)?.parse::<i32>().ok()?;
+        (1..=12).contains(&n).then_some(n)
+    };
+    parse(modified, "XF86Switch_VT_")
+        .or_else(|| parse(raw, "XF86Switch_VT_"))
+        .or_else(|| {
+            if mods.ctrl && mods.alt {
+                parse(raw, "F")
+            } else {
+                None
+            }
+        })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ctrl_alt() -> ModifiersState {
+        ModifiersState {
+            ctrl: true,
+            alt: true,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn vt_keys_are_recognised() {
+        assert_eq!(vt_number("XF86Switch_VT_3", "F3", &ctrl_alt()), Some(3));
+        assert_eq!(vt_number("F12", "F12", &ctrl_alt()), Some(12));
+        assert_eq!(vt_number("F3", "F3", &ModifiersState::default()), None);
+        assert_eq!(vt_number("XF86Switch_VT_13", "F13", &ctrl_alt()), None);
+    }
+
+    #[test]
+    fn pointer_is_clamped_to_the_output() {
+        let rect =
+            smithay::utils::Rectangle::<f64, Logical>::new((0.0, 0.0).into(), (100.0, 50.0).into());
+        assert_eq!(clamp_to((-5.0, 70.0).into(), rect), (0.0, 49.0).into());
+        assert_eq!(clamp_to((10.0, 20.0).into(), rect), (10.0, 20.0).into());
     }
 }
