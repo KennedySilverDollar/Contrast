@@ -113,13 +113,19 @@ impl Default for Shadow {
     }
 }
 
-/// 窓の並べ方の隙間。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+/// 窓の並べ方の設定。
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct LayoutSettings {
     /// 窓と窓の間（px）。
     pub gap: i32,
     /// 出力の端と窓の間（px）。
     pub outer_gap: i32,
+    /// 窓の並べ方（`Equal`: 等分、`Scrolling`: スクロール列）。起動時に決まり、リロードでは変わらない。
+    pub mode: contrast_core::LayoutMode,
+    /// 新しい列の幅。`None` なら core の既定（1/2）。
+    pub default_column_width: Option<contrast_core::Ratio>,
+    /// プリセットの列幅。空なら core の既定（1/3・1/2・2/3）。
+    pub preset_column_widths: Vec<contrast_core::Ratio>,
 }
 
 /// カーソルの設定。`None` は「設定なし」（環境変数 `XCURSOR_THEME` / `XCURSOR_SIZE`、無ければ既定）。

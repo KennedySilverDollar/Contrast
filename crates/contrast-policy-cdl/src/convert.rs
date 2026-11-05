@@ -7,6 +7,7 @@
 use std::collections::BTreeMap;
 
 use cdl_host::{Node, Px, Rgba};
+use contrast_core::{LayoutMode, Ratio};
 use contrast_policy::settings::{MAX_BORDER_WIDTH, MAX_DECORATION_PX, MAX_WORKSPACES, rgba8};
 use contrast_policy::{Action, ConfigDiagnostic, KeyBinding, KeySpec, ModKey, Settings, codes};
 
@@ -265,6 +266,62 @@ fn read_layout(cx: &mut Ctx<'_>, node: Node<'_>, settings: &mut Settings) {
     if let Some(v) = optional_px(cx, node, "outerGap") {
         settings.layout.outer_gap = v;
     }
+    if let Some(mode) = cx.optional::<String>(node, "mode") {
+        match mode.as_str() {
+            "equal" => settings.layout.mode = LayoutMode::Equal,
+            "scrolling" => settings.layout.mode = LayoutMode::Scrolling,
+            other => cx.error(
+                node,
+                codes::BAD_PROP,
+                format!("`mode` は \"equal\" か \"scrolling\"（\"{other}\" は使えない）"),
+            ),
+        }
+    }
+    if let Some(w) = cx.optional::<f64>(node, "defaultColumnWidth") {
+        match proportion(w) {
+            Some(r) => settings.layout.default_column_width = Some(r),
+            None => cx.error(
+                node,
+                codes::BAD_PROP,
+                format!("`defaultColumnWidth` は 0 より大きく 1 以下の数（{w} は使えない）"),
+            ),
+        }
+    }
+    if let Some(text) = cx.optional::<String>(node, "presetColumnWidths") {
+        match parse_presets(&text) {
+            Some(list) => settings.layout.preset_column_widths = list,
+            None => cx.error(
+                node,
+                codes::BAD_PROP,
+                format!(
+                    "`presetColumnWidths` は 0 より大きく 1 以下の数を、空白かコンマで区切って 1〜{MAX_PRESET_COLUMNS} 個（\"{text}\" は使えない）"
+                ),
+            ),
+        }
+    }
+}
+
+/// プリセットの列幅の最大数（core の `MAX_PRESETS` と同じ）。
+const MAX_PRESET_COLUMNS: usize = 8;
+
+/// 割合 `x`（0 より大きく 1 以下）を、分母 1000 の `Ratio` にする（小数第 4 位を四捨五入、1/1000 未満は 1/1000）。
+fn proportion(x: f64) -> Option<Ratio> {
+    if !x.is_finite() || x <= 0.0 || x > 1.0 {
+        return None;
+    }
+    let num = (x * 1000.0).round().clamp(1.0, 1000.0);
+    // `num` は 1.0〜1000.0 の整数値なので、切り捨てても変わらない。
+    Ratio::new(num as u32, 1000)
+}
+
+/// 空白かコンマで区切った割合の並び。1〜`MAX_PRESET_COLUMNS` 個で、どれも `proportion` が通るときだけ。
+fn parse_presets(text: &str) -> Option<Vec<Ratio>> {
+    let list: Option<Vec<Ratio>> = text
+        .split(|c: char| c == ',' || c.is_whitespace())
+        .filter(|t| !t.is_empty())
+        .map(|t| t.parse::<f64>().ok().and_then(proportion))
+        .collect();
+    list.filter(|l| !l.is_empty() && l.len() <= MAX_PRESET_COLUMNS)
 }
 
 /// `Cursor` を読む。`size` は 8〜256 の整数。
@@ -329,6 +386,8 @@ fn read_keybind(cx: &mut Ctx<'_>, node: Node<'_>, settings: &Settings) -> Option
     let action = cx.prop::<String>(node, "action");
     let command = cx.optional::<String>(node, "command");
     let workspace = cx.optional::<f64>(node, "workspace");
+    let width = cx.optional::<f64>(node, "width");
+    let delta = cx.optional::<f64>(node, "delta");
     let (keys, action) = (keys?, action?);
 
     let spec: Option<KeySpec> = match parse_key_spec(&keys, settings.mod_key) {
@@ -338,22 +397,43 @@ fn read_keybind(cx: &mut Ctx<'_>, node: Node<'_>, settings: &Settings) -> Option
             None
         }
     };
-    let action = read_action(cx, node, &action, command, workspace, settings.workspaces);
+    let args = ActionArgs {
+        command,
+        workspace,
+        width,
+        delta,
+        count: settings.workspaces,
+    };
+    let action = read_action(cx, node, &action, args);
     Some(KeyBinding {
         key: spec?,
         action: action?,
     })
 }
 
-/// `action` の名前と `command`・`workspace` から `Action` を作る。
-fn read_action(
-    cx: &mut Ctx<'_>,
-    node: Node<'_>,
-    name: &str,
+/// `Keybind` の action に付く引数。
+struct ActionArgs {
+    /// `command`（`spawn`）。
     command: Option<String>,
+    /// `workspace`（1 始まり）。
     workspace: Option<f64>,
+    /// `width`（`set-column-width`。0 より大きく 1 以下の割合）。
+    width: Option<f64>,
+    /// `delta`（`adjust-column-width`。パーセント、0 以外で -100〜100 の整数）。
+    delta: Option<f64>,
+    /// ワークスペースの数。
     count: u8,
-) -> Option<Action> {
+}
+
+/// `action` の名前と引数から `Action` を作る。
+fn read_action(cx: &mut Ctx<'_>, node: Node<'_>, name: &str, args: ActionArgs) -> Option<Action> {
+    let ActionArgs {
+        command,
+        workspace,
+        width,
+        delta,
+        count,
+    } = args;
     let simple = match name {
         "close" => Some(Action::CloseFocused),
         "focus-left" => Some(Action::FocusPrev),
@@ -368,6 +448,18 @@ fn read_action(
         "move-to-workspace-prev" => Some(Action::MoveToWorkspacePrev),
         "reload-config" => Some(Action::ReloadConfig),
         "quit" => Some(Action::Quit),
+        "focus-up" => Some(Action::FocusUp),
+        "focus-down" => Some(Action::FocusDown),
+        "move-up" => Some(Action::MoveUp),
+        "move-down" => Some(Action::MoveDown),
+        "focus-column-first" => Some(Action::FocusColumnFirst),
+        "focus-column-last" => Some(Action::FocusColumnLast),
+        "move-column-first" => Some(Action::MoveColumnFirst),
+        "move-column-last" => Some(Action::MoveColumnLast),
+        "consume-window-into-column" => Some(Action::ConsumeWindowIntoColumn),
+        "expel-window-from-column" => Some(Action::ExpelWindowFromColumn),
+        "switch-preset-column-width" => Some(Action::SwitchPresetColumnWidth),
+        "maximize-column" => Some(Action::MaximizeColumn),
         _ => None,
     };
     if simple.is_some() {
@@ -385,6 +477,36 @@ fn read_action(
                 None
             }
         },
+        "set-column-width" => match width.and_then(proportion) {
+            Some(r) => Some(Action::SetColumnWidth(r)),
+            None => {
+                cx.error(
+                    node,
+                    codes::BAD_PROP,
+                    "`set-column-width` には 0 より大きく 1 以下の `width` が要る",
+                );
+                None
+            }
+        },
+        "adjust-column-width" => {
+            let percent = delta
+                .and_then(|d| integer_in(d.abs(), 1, 100).map(|n| (d < 0.0, n)))
+                .and_then(|(neg, n)| {
+                    let v = i8::try_from(n).ok()?;
+                    if neg { v.checked_neg() } else { Some(v) }
+                });
+            match percent {
+                Some(p) => Some(Action::AdjustColumnWidth(p)),
+                None => {
+                    cx.error(
+                        node,
+                        codes::BAD_PROP,
+                        "`adjust-column-width` には 0 以外で -100〜100 の整数の `delta`（パーセント）が要る",
+                    );
+                    None
+                }
+            }
+        }
         "workspace" | "move-to-workspace" => {
             let Some(n) = workspace else {
                 cx.error(
@@ -415,7 +537,10 @@ fn read_action(
                 format!(
                     "未知の action \"{other}\"（spawn / close / focus-left / focus-right / move-left / move-right / \
                      workspace / move-to-workspace / workspace-next / workspace-prev / move-to-workspace-next / \
-                     move-to-workspace-prev / toggle-floating / toggle-fullscreen / reload-config / quit）"
+                     move-to-workspace-prev / focus-up / focus-down / move-up / move-down / focus-column-first / \
+                     focus-column-last / move-column-first / move-column-last / consume-window-into-column / \
+                     expel-window-from-column / switch-preset-column-width / maximize-column / set-column-width / \
+                     adjust-column-width / toggle-floating / toggle-fullscreen / reload-config / quit）"
                 ),
             );
             None

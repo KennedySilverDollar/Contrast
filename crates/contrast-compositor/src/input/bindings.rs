@@ -23,6 +23,22 @@ impl Contrast {
             Action::FocusNext => contrast_core::Action::FocusDirection(Direction::Right),
             Action::MoveLeft => contrast_core::Action::MoveWindow(Direction::Left),
             Action::MoveRight => contrast_core::Action::MoveWindow(Direction::Right),
+            Action::FocusUp => contrast_core::Action::FocusDirection(Direction::Up),
+            Action::FocusDown => contrast_core::Action::FocusDirection(Direction::Down),
+            Action::MoveUp => contrast_core::Action::MoveWindow(Direction::Up),
+            Action::MoveDown => contrast_core::Action::MoveWindow(Direction::Down),
+            Action::FocusColumnFirst => contrast_core::Action::FocusColumnFirst,
+            Action::FocusColumnLast => contrast_core::Action::FocusColumnLast,
+            Action::MoveColumnFirst => contrast_core::Action::MoveColumnToFirst,
+            Action::MoveColumnLast => contrast_core::Action::MoveColumnToLast,
+            Action::ConsumeWindowIntoColumn => contrast_core::Action::ConsumeWindowIntoColumn,
+            Action::ExpelWindowFromColumn => contrast_core::Action::ExpelWindowFromColumn,
+            Action::SwitchPresetColumnWidth => contrast_core::Action::SwitchPresetColumnWidth,
+            Action::MaximizeColumn => contrast_core::Action::MaximizeColumn,
+            Action::SetColumnWidth(ratio) => {
+                contrast_core::Action::SetColumnWidth(contrast_core::ColumnWidth::Proportion(ratio))
+            }
+            Action::AdjustColumnWidth(percent) => return self.adjust_column_width(percent),
             Action::ToggleFloating => contrast_core::Action::ToggleFloating,
             Action::ToggleFullscreen => contrast_core::Action::ToggleFullscreen,
             Action::WorkspaceNext => return self.step_workspace(1, false),
@@ -37,6 +53,35 @@ impl Contrast {
             }
         };
         self.core_action(core_action);
+    }
+
+    /// フォーカス列の幅を `percent` パーセントぶん増減する（core は絶対幅しか受けないので、ここで今の割合から求める）。
+    fn adjust_column_width(&mut self, percent: i8) {
+        let Some(area) = self.shown_area_width() else {
+            return;
+        };
+        let current = self.focused_window_width();
+        let Some(next) = current.and_then(|w| adjusted_percent(w, area, percent)) else {
+            return;
+        };
+        let Some(ratio) = contrast_core::Ratio::new(next, 100) else {
+            return;
+        };
+        self.core_action(contrast_core::Action::SetColumnWidth(
+            contrast_core::ColumnWidth::Proportion(ratio),
+        ));
+    }
+
+    /// 表示中のワークスペースの出力の作業領域の幅（core が窓を並べる領域の幅）。
+    fn shown_area_width(&self) -> Option<i32> {
+        let output = self.space.outputs().next()?;
+        Some(self.space.output_geometry(output)?.size.w)
+    }
+
+    /// フォーカス窓の矩形の幅（列の幅と同じ）。
+    fn focused_window_width(&self) -> Option<i32> {
+        let view = self.core.view();
+        view.window(view.focus()?)?.rect.map(|r| r.width())
     }
 
     /// 表示中のワークスペースの番号（0 始まり）。出力が無ければ `None`。
@@ -114,5 +159,32 @@ mod tests {
         assert_eq!(step_index(0, -1, 4), None);
         assert_eq!(step_index(0, 1, 0), None);
         assert_eq!(step_index(255, 1, 255), None);
+    }
+}
+
+/// 幅 `width` を作業領域の幅 `area` に対する割合（整数パーセント、四捨五入）にし、`delta` を足して 1〜100 に収める。
+fn adjusted_percent(width: i32, area: i32, delta: i8) -> Option<u32> {
+    let width = i64::from(width.max(1));
+    let area = i64::from(area.max(1));
+    let current = width
+        .checked_mul(100)?
+        .checked_add(area.checked_div(2)?)?
+        .checked_div(area)?;
+    let next = current.checked_add(i64::from(delta))?.clamp(1, 100);
+    u32::try_from(next).ok()
+}
+
+#[cfg(test)]
+mod width_tests {
+    use super::adjusted_percent;
+
+    #[test]
+    fn percent_is_rounded_and_clamped() {
+        assert_eq!(adjusted_percent(450, 900, 10), Some(60));
+        assert_eq!(adjusted_percent(450, 900, -10), Some(40));
+        assert_eq!(adjusted_percent(300, 900, 10), Some(43));
+        assert_eq!(adjusted_percent(900, 900, 10), Some(100));
+        assert_eq!(adjusted_percent(90, 900, -50), Some(1));
+        assert_eq!(adjusted_percent(1200, 900, -10), Some(100));
     }
 }

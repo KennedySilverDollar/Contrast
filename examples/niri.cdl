@@ -7,7 +7,7 @@
 //
 // 対応しない niri の操作（モニタ・列の幅/高さ・列への出し入れ・マウスホイール・スクリーンショットなど）は書かない。
 // Mod+Alt+… の 3 つは Mod が Alt のとき Mod+… と同じキーになってしまうので、`super+alt+…` と書く（niri の Mod=Super と同じ）。
-// 縦方向（Down/Up と J/K）の移動は、Contrast に列の中の縦の並びが無いので、並びの次/前へ代用する。
+// スクロール列レイアウト（Layout mode="scrolling"）: 列が横に並び、Up/Down/J/K は列の中の上下の窓を動く。
 "use cdl 1";
 import { Contrast, Appearance, Layout, Cursor, Input, Workspaces, Keybind } from "host:contrast";
 
@@ -18,7 +18,9 @@ export default (
         使うなら radius={px(12)} shadowBlur={px(30)} shadowOffsetY={px(5)} shadowColor={color("#00000070")} を足す。 */}
     <Appearance borderWidth={px(4)} focusColor={color("#7fc8ff")} borderColor={color("#505050")}
       background={color("#1f2433")} radius={px(0)} />
-    <Layout gap={px(16)} outerGap={px(16)} />
+    {/* niri の layout { gaps 16; default-column-width { proportion 0.5; } preset-column-widths { 1/3 1/2 2/3 } } */}
+    <Layout gap={px(16)} outerGap={px(16)} mode="scrolling" defaultColumnWidth={0.5}
+      presetColumnWidths="0.33333 0.5 0.66667" />
     {/* niri の cursor { xcursor-theme "Cecilia"; xcursor-size 24 } */}
     <Cursor theme="Cecilia" size={24} />
     {/* niri の input { touchpad { tap; natural-scroll } } */}
@@ -44,25 +46,25 @@ export default (
     <Keybind keys="mod+q" action="close" />
     <Keybind keys="mod+shift+e" action="quit" />
 
-    {/* フォーカス移動（Left/Right/H/L は niri と同じ。Down/Up/J/K は並びの次/前で代用） */}
+    {/* フォーカス移動（niri と同じ。Left/Right/H/L は列、Up/Down/K/J は列の中の窓） */}
     <Keybind keys="mod+Left" action="focus-left" />
     <Keybind keys="mod+Right" action="focus-right" />
     <Keybind keys="mod+h" action="focus-left" />
     <Keybind keys="mod+l" action="focus-right" />
-    <Keybind keys="mod+Up" action="focus-left" />
-    <Keybind keys="mod+Down" action="focus-right" />
-    <Keybind keys="mod+k" action="focus-left" />
-    <Keybind keys="mod+j" action="focus-right" />
+    <Keybind keys="mod+Up" action="focus-up" />
+    <Keybind keys="mod+Down" action="focus-down" />
+    <Keybind keys="mod+k" action="focus-up" />
+    <Keybind keys="mod+j" action="focus-down" />
 
-    {/* 窓の移動（move-column-left/right 相当。Down/Up/J/K は代用） */}
+    {/* 窓の移動（Left/Right/H/L は列を入れ替え、Up/Down/K/J は列の中で入れ替え） */}
     <Keybind keys="mod+ctrl+Left" action="move-left" />
     <Keybind keys="mod+ctrl+Right" action="move-right" />
     <Keybind keys="mod+ctrl+h" action="move-left" />
     <Keybind keys="mod+ctrl+l" action="move-right" />
-    <Keybind keys="mod+ctrl+Up" action="move-left" />
-    <Keybind keys="mod+ctrl+Down" action="move-right" />
-    <Keybind keys="mod+ctrl+k" action="move-left" />
-    <Keybind keys="mod+ctrl+j" action="move-right" />
+    <Keybind keys="mod+ctrl+Up" action="move-up" />
+    <Keybind keys="mod+ctrl+Down" action="move-down" />
+    <Keybind keys="mod+ctrl+k" action="move-up" />
+    <Keybind keys="mod+ctrl+j" action="move-down" />
 
     {/* ワークスペースの切り替え（focus-workspace-down/up は次/前。端で循環しない） */}
     <Keybind keys="mod+Page_Down" action="workspace-next" />
@@ -98,17 +100,24 @@ export default (
     <Keybind keys="mod+shift+f" action="toggle-fullscreen" />
     <Keybind keys="mod+v" action="toggle-floating" />
 
-    {/* ---- 実現できないもの（contrast-core の変更が要る。docs/niri-parity.md） ----
-        N3（レイアウト）待ち:
-          Mod+Home / Mod+End                    focus-column-first / last
-          Mod+Ctrl+Home / Mod+Ctrl+End          move-column-to-first / last
-          Mod+Comma / Mod+Period                consume-window-into-column / expel-window-from-column
+    {/* 列の操作（niri と同じキー） */}
+    <Keybind keys="mod+Home" action="focus-column-first" />
+    <Keybind keys="mod+End" action="focus-column-last" />
+    <Keybind keys="mod+ctrl+Home" action="move-column-first" />
+    <Keybind keys="mod+ctrl+End" action="move-column-last" />
+    <Keybind keys="mod+Comma" action="consume-window-into-column" />
+    <Keybind keys="mod+Period" action="expel-window-from-column" />
+    <Keybind keys="mod+r" action="switch-preset-column-width" />
+    <Keybind keys="mod+f" action="maximize-column" />
+    <Keybind keys="mod+Minus" action="adjust-column-width" delta={-10} />
+    <Keybind keys="mod+Equal" action="adjust-column-width" delta={10} />
+
+    {/* ---- まだ実現できないもの（docs/niri-parity.md） ----
+        N3b（窓の高さ・center-column・consume-or-expel）待ち:
           Mod+BracketLeft / Mod+BracketRight    consume-or-expel-window-left / right
-          Mod+R / Mod+Shift+R / Mod+Ctrl+R      switch-preset-column-width / switch-preset-window-height / reset-window-height
-          Mod+F / Mod+C                         maximize-column / center-column
-          Mod+Minus / Mod+Equal                 set-column-width ∓10%
+          Mod+Shift+R / Mod+Ctrl+R              switch-preset-window-height / reset-window-height
+          Mod+C                                 center-column
           Mod+Shift+Minus / Mod+Shift+Equal     set-window-height ∓10%
-          preset-column-widths（1/3・1/2・2/3）と default-column-width（1/2）、focus-window-up/down の縦の並び
         N4（ワークスペース・モニタ）待ち:
           Mod+Shift+矢印/H/J/K/L（+Ctrl）       focus-monitor-* / move-column-to-monitor-*
           Mod+Shift+Page_Down / Page_Up / U / I move-workspace-down / up

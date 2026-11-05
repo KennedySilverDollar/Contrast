@@ -36,7 +36,7 @@ fn example(name: &str) -> PathBuf {
 /// 読み込む。ファイルが無いときは診断に見せかけず `Err(vec![])`。
 fn load(path: &Path) -> Result<Config, Vec<ConfigDiagnostic>> {
     match CdlLoader::new().load(path) {
-        LoadOutcome::Loaded(c) => Ok(c),
+        LoadOutcome::Loaded(c) => Ok(*c),
         LoadOutcome::Failed(d) => Err(d),
         LoadOutcome::Absent => Err(Vec::new()),
     }

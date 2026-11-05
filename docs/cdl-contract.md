@@ -13,11 +13,14 @@ CDL 側の仕様は CDL リポジトリの `docs/SPEC.md`（6・8・9 章）と 
 | `Contrast` | `modKey?: "alt" \| "super"`（省略時は下記の優先順位で決まる） | `Appearance` \| `Workspaces` \| `Layout` \| `Cursor` \| `Input` \| `Keybind` | `Appearance`、`Workspaces`、`Layout`、`Cursor`、`Input` |
 | `Appearance` | `borderWidth: Length`、`focusColor: Color`、`borderColor?: Color`、`background?: Color`、`radius?: Length`、`shadowBlur?: Length`、`shadowOffsetX?: Length`、`shadowOffsetY?: Length`、`shadowColor?: Color`、`inactiveBorderWidth?: Length` | なし | — |
 | `Workspaces` | `count: number`（整数、1〜32） | なし | — |
-| `Layout` | `gap?: Length`、`outerGap?: Length` | なし | — |
+| `Layout` | `gap?: Length`、`outerGap?: Length`、`mode?: "equal" \| "scrolling"`（既定 `"equal"`）、`defaultColumnWidth?: number`、`presetColumnWidths?: string` | なし | — |
 | `Cursor` | `theme?: string`、`size?: number` | なし | — |
 | `Input` | `tapToClick?: boolean`（既定 true）、`naturalScroll?: boolean`（既定 false）、`accelSpeed?: number`（-1〜1、既定 0）、`disableWhileTyping?: boolean`（既定 true） | なし | — |
-| `Keybind` | `keys: string`、`action: string`、`command?: string`、`workspace?: number` | なし | — |
+| `Keybind` | `keys: string`、`action: string`、`command?: string`、`workspace?: number`、`width?: number`、`delta?: number` | なし | — |
 
+- `Layout.mode` はスクロール列レイアウト（core-spec 12 節）を選ぶ。起動時に決まり、リロードでは変わらない（変えるには再起動）。
+  `defaultColumnWidth` は新しい列の幅（0 より大きく 1 以下の割合、既定 0.5）。`presetColumnWidths` はプリセットの列幅で、
+  割合を空白かコンマで区切って 1〜8 個（既定 `0.33333 0.5 0.66667`）。割合は分母 1000 に丸める。範囲外・不正な書式は CT003。
 - 見た目の追加 prop はすべて省略でき、省略時は今の見た目と同じ（角丸 0・影なし・隙間 0・非フォーカスの枠の幅は `borderWidth`）。
   - `gap` は窓と窓の間、`outerGap` は出力の端と窓の間（px）。core の矩形は変えず、描画側で縮める。
   - `radius` は窓と枠の角丸の半径。`shadowBlur` が 0 のとき影は描かない。`shadowOffsetX/Y` は負も使える。
@@ -44,7 +47,16 @@ CDL 側の仕様は CDL リポジトリの `docs/SPEC.md`（6・8・9 章）と 
 
 `spawn` / `close` / `focus-left` / `focus-right` / `move-left` / `move-right` / `workspace` / `move-to-workspace` /
 `workspace-next` / `workspace-prev` / `move-to-workspace-next` / `move-to-workspace-prev` /
-`toggle-floating` / `toggle-fullscreen` / `reload-config` / `quit`。
+`toggle-floating` / `toggle-fullscreen` / `reload-config` / `quit` /
+`focus-up` / `focus-down` / `move-up` / `move-down` /
+`focus-column-first` / `focus-column-last` / `move-column-first` / `move-column-last` /
+`consume-window-into-column` / `expel-window-from-column` / `switch-preset-column-width` / `maximize-column` /
+`set-column-width` / `adjust-column-width`。
+
+- 列の操作（`focus-column-*` 以降）と `focus-up/down`・`move-up/down` の列での意味は、`Layout.mode` が `scrolling` のときだけ。`equal` のとき、列の操作は何もしない
+  （`focus-up/down`・`move-up/down` は従来の幾何・順序列の規則）。
+- `set-column-width` は `width`（0 より大きく 1 以下の割合）が必須。`adjust-column-width` は `delta`（0 以外で -100〜100 の整数のパーセント）が必須で、
+  フォーカス列の今の幅の割合（整数パーセント）に足して 1〜100 に収める。どちらも不正なら CT003。
 
 - `workspace-next` / `workspace-prev` は、いま表示中の番号の ±1 へ切り替える。`move-to-workspace-next` / `-prev` は、
   フォーカス窓をその番号へ移す。端では何もしない（循環しない）。引数は取らない。

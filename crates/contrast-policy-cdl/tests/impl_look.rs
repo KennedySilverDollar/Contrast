@@ -14,7 +14,7 @@ fn write_temp(dir: &str, body: &str) -> Result<PathBuf, String> {
     fs::create_dir_all(&base).map_err(|e| e.to_string())?;
     let path = base.join("config.cdl");
     let text = format!(
-        "\"use cdl 1\";\nimport {{ Contrast, Appearance, Layout, Cursor }} from \"host:contrast\";\nexport default (\n  <Contrast>\n{body}\n  </Contrast>\n);\n"
+        "\"use cdl 1\";\nimport {{ Contrast, Appearance, Layout, Cursor, Keybind }} from \"host:contrast\";\nexport default (\n  <Contrast>\n{body}\n  </Contrast>\n);\n"
     );
     fs::write(&path, text).map_err(|e| e.to_string())?;
     Ok(path)
@@ -113,5 +113,139 @@ fn edges_of_the_ranges_are_accepted() -> Result<(), String> {
 fn duplicate_layout_or_cursor_fails() -> Result<(), String> {
     assert!(load("dup1", "<Layout /><Layout />")?.is_err());
     assert!(load("dup2", "<Cursor /><Cursor />")?.is_err());
+    Ok(())
+}
+
+#[test]
+fn scrolling_layout_options_are_read() -> Result<(), String> {
+    let body = r#"<Layout mode="scrolling" defaultColumnWidth={0.4} presetColumnWidths="0.25, 0.5 0.75" />"#;
+    let s = load("scroll", body)?.map_err(|d| format!("{d:?}"))?;
+    assert_eq!(s.layout.mode, contrast_core::LayoutMode::Scrolling);
+    assert_eq!(
+        s.layout.default_column_width,
+        contrast_core::Ratio::new(400, 1000)
+    );
+    let presets: Vec<_> = s
+        .layout
+        .preset_column_widths
+        .iter()
+        .map(|r| (r.num(), r.den()))
+        .collect();
+    assert_eq!(presets, vec![(250, 1000), (500, 1000), (750, 1000)]);
+    // 既定は Equal・core の既定。
+    let d = load("scroll_default", "<Layout />")?.map_err(|d| format!("{d:?}"))?;
+    assert_eq!(d.layout.mode, contrast_core::LayoutMode::Equal);
+    assert_eq!(d.layout.default_column_width, None);
+    assert!(d.layout.preset_column_widths.is_empty());
+    let e = load("scroll_equal", r#"<Layout mode="equal" />"#)?.map_err(|d| format!("{d:?}"))?;
+    assert_eq!(e.layout.mode, contrast_core::LayoutMode::Equal);
+    Ok(())
+}
+
+#[test]
+fn bad_scrolling_layout_options_are_ct003() -> Result<(), String> {
+    let bad = [
+        ("mode", r#"<Layout mode="grid" />"#),
+        ("width0", "<Layout defaultColumnWidth={0} />"),
+        ("width2", "<Layout defaultColumnWidth={1.5} />"),
+        ("preset_empty", r#"<Layout presetColumnWidths="" />"#),
+        ("preset_bad", r#"<Layout presetColumnWidths="0.5 abc" />"#),
+        ("preset_big", r#"<Layout presetColumnWidths="0.5 2" />"#),
+        (
+            "preset_many",
+            r#"<Layout presetColumnWidths="0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9" />"#,
+        ),
+    ];
+    for (dir, body) in bad {
+        let r = load(dir, body)?;
+        assert_eq!(r.err(), Some(vec!["CT003".to_owned()]), "{dir}");
+    }
+    Ok(())
+}
+
+#[test]
+fn column_width_actions_need_valid_arguments() -> Result<(), String> {
+    use contrast_policy::Action;
+    let ok = r#"
+    <Keybind keys="alt+1" action="set-column-width" width={0.333} />
+    <Keybind keys="alt+2" action="adjust-column-width" delta={-10} />
+    <Keybind keys="alt+3" action="adjust-column-width" delta={25} />"#;
+    let s = load("actions_ok", ok)?.map_err(|d| format!("{d:?}"))?;
+    let alt = contrast_policy::ModKey::Alt.mods();
+    assert_eq!(
+        s.resolve_key(alt, "1"),
+        contrast_core::Ratio::new(333, 1000).map(Action::SetColumnWidth)
+    );
+    assert_eq!(
+        s.resolve_key(alt, "2"),
+        Some(Action::AdjustColumnWidth(-10))
+    );
+    assert_eq!(s.resolve_key(alt, "3"), Some(Action::AdjustColumnWidth(25)));
+    let bad = [
+        (
+            "set_missing",
+            r#"<Keybind keys="alt+1" action="set-column-width" />"#,
+        ),
+        (
+            "set_range",
+            r#"<Keybind keys="alt+1" action="set-column-width" width={2} />"#,
+        ),
+        (
+            "adj_missing",
+            r#"<Keybind keys="alt+1" action="adjust-column-width" />"#,
+        ),
+        (
+            "adj_zero",
+            r#"<Keybind keys="alt+1" action="adjust-column-width" delta={0} />"#,
+        ),
+        (
+            "adj_big",
+            r#"<Keybind keys="alt+1" action="adjust-column-width" delta={101} />"#,
+        ),
+        (
+            "adj_frac",
+            r#"<Keybind keys="alt+1" action="adjust-column-width" delta={1.5} />"#,
+        ),
+    ];
+    for (dir, body) in bad {
+        let r = load(dir, body)?;
+        assert_eq!(r.err(), Some(vec!["CT003".to_owned()]), "{dir}");
+    }
+    Ok(())
+}
+
+#[test]
+fn plain_scrolling_actions_are_recognised() -> Result<(), String> {
+    use contrast_policy::Action;
+    let names = [
+        ("focus-up", Action::FocusUp),
+        ("focus-down", Action::FocusDown),
+        ("move-up", Action::MoveUp),
+        ("move-down", Action::MoveDown),
+        ("focus-column-first", Action::FocusColumnFirst),
+        ("focus-column-last", Action::FocusColumnLast),
+        ("move-column-first", Action::MoveColumnFirst),
+        ("move-column-last", Action::MoveColumnLast),
+        (
+            "consume-window-into-column",
+            Action::ConsumeWindowIntoColumn,
+        ),
+        ("expel-window-from-column", Action::ExpelWindowFromColumn),
+        (
+            "switch-preset-column-width",
+            Action::SwitchPresetColumnWidth,
+        ),
+        ("maximize-column", Action::MaximizeColumn),
+    ];
+    let alt = contrast_policy::ModKey::Alt.mods();
+    for (i, (name, want)) in names.into_iter().enumerate() {
+        let body = format!(r#"<Keybind keys="alt+F{}" action="{name}" />"#, i + 1);
+        let s = load(&format!("plain_{i}"), &body)?.map_err(|d| format!("{d:?}"))?;
+        assert_eq!(
+            s.resolve_key(alt, &format!("F{}", i + 1)),
+            Some(want),
+            "{name}"
+        );
+    }
     Ok(())
 }

@@ -92,7 +92,7 @@ impl fmt::Display for ConfigDiagnostic {
 /// 読み込みの結果。
 pub enum LoadOutcome {
     /// 読み込めた。この設定で動く。
-    Loaded(Config),
+    Loaded(Box<Config>),
     /// 設定ファイルが無い。エラーではない（既定値で動く）。
     Absent,
     /// 読み込み・評価・変換のどれかに失敗した。診断は 1 件以上。半端な設定は返さない。

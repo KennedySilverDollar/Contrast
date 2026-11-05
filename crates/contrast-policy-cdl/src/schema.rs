@@ -59,7 +59,10 @@ pub(crate) fn contrast_schema() -> Result<Schema, Vec<String>> {
             MODULE,
             ComponentDef::new("Layout")
                 .optional_prop("gap", Ty::Length)
-                .optional_prop("outerGap", Ty::Length),
+                .optional_prop("outerGap", Ty::Length)
+                .optional_prop("mode", Ty::String)
+                .optional_prop("defaultColumnWidth", Ty::Number)
+                .optional_prop("presetColumnWidths", Ty::String),
         )
         .component(
             MODULE,
@@ -85,7 +88,9 @@ pub(crate) fn contrast_schema() -> Result<Schema, Vec<String>> {
                 .prop("keys", Ty::String)
                 .prop("action", Ty::String)
                 .optional_prop("command", Ty::String)
-                .optional_prop("workspace", Ty::Number),
+                .optional_prop("workspace", Ty::Number)
+                .optional_prop("width", Ty::Number)
+                .optional_prop("delta", Ty::Number),
         )
         .type_def(MODULE, "WindowInfo", window_info.clone())
         .type_def(MODULE, "Placement", placement.clone())

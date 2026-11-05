@@ -112,8 +112,8 @@ fn niri_example_binds_resolve_to_the_expected_actions() -> Result<(), String> {
     assert_eq!(s.resolve_key(m, "h"), Some(Action::FocusPrev));
     assert_eq!(s.resolve_key(m, "Right"), Some(Action::FocusNext));
     assert_eq!(s.resolve_key(m, "l"), Some(Action::FocusNext));
-    assert_eq!(s.resolve_key(m, "j"), Some(Action::FocusNext));
-    assert_eq!(s.resolve_key(m, "k"), Some(Action::FocusPrev));
+    assert_eq!(s.resolve_key(m, "j"), Some(Action::FocusDown));
+    assert_eq!(s.resolve_key(m, "k"), Some(Action::FocusUp));
     assert_eq!(s.resolve_key(ctrl, "Left"), Some(Action::MoveLeft));
     assert_eq!(s.resolve_key(ctrl, "l"), Some(Action::MoveRight));
 
@@ -133,8 +133,35 @@ fn niri_example_binds_resolve_to_the_expected_actions() -> Result<(), String> {
 
     assert_eq!(s.resolve_key(shift, "f"), Some(Action::ToggleFullscreen));
     assert_eq!(s.resolve_key(m, "v"), Some(Action::ToggleFloating));
-    // 対応しないキーは何もしない。
-    assert_eq!(s.resolve_key(m, "Home"), None);
+    // スクロール列のキー。
+    assert_eq!(s.resolve_key(m, "Home"), Some(Action::FocusColumnFirst));
+    assert_eq!(s.resolve_key(m, "End"), Some(Action::FocusColumnLast));
+    assert_eq!(s.resolve_key(ctrl, "Home"), Some(Action::MoveColumnFirst));
+    assert_eq!(s.resolve_key(ctrl, "End"), Some(Action::MoveColumnLast));
+    assert_eq!(
+        s.resolve_key(m, "Comma"),
+        Some(Action::ConsumeWindowIntoColumn)
+    );
+    assert_eq!(
+        s.resolve_key(m, "Period"),
+        Some(Action::ExpelWindowFromColumn)
+    );
+    assert_eq!(s.resolve_key(m, "r"), Some(Action::SwitchPresetColumnWidth));
+    assert_eq!(s.resolve_key(m, "f"), Some(Action::MaximizeColumn));
+    assert_eq!(
+        s.resolve_key(m, "Minus"),
+        Some(Action::AdjustColumnWidth(-10))
+    );
+    assert_eq!(
+        s.resolve_key(m, "Equal"),
+        Some(Action::AdjustColumnWidth(10))
+    );
+    assert_eq!(s.resolve_key(m, "Up"), Some(Action::FocusUp));
+    assert_eq!(s.resolve_key(m, "Down"), Some(Action::FocusDown));
+    assert_eq!(s.resolve_key(ctrl, "k"), Some(Action::MoveUp));
+    assert_eq!(s.resolve_key(ctrl, "Down"), Some(Action::MoveDown));
+    // まだ対応しないキーは何もしない（center-column）。
+    assert_eq!(s.resolve_key(m, "c"), None);
     Ok(())
 }
 
@@ -201,6 +228,12 @@ fn niri_example_carries_the_niri_look() -> Result<(), String> {
     let loader = CdlLoader::new().with_default_mod_key(ModKey::Super);
     let s = load_with(&loader, &example("niri.cdl"))?;
     assert_eq!((s.layout.gap, s.layout.outer_gap), (16, 16));
+    assert_eq!(s.layout.mode, contrast_core::LayoutMode::Scrolling);
+    assert_eq!(
+        s.layout.default_column_width,
+        contrast_core::Ratio::new(500, 1000)
+    );
+    assert_eq!(s.layout.preset_column_widths.len(), 3);
     assert_eq!(s.appearance.border_width, 4);
     assert_eq!(s.appearance.radius, 0);
     assert!(s.appearance.border_color.is_some());

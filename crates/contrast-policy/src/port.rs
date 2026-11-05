@@ -46,6 +46,34 @@ pub enum Action {
     MoveToWorkspaceNext,
     /// フォーカス窓を前のワークスペースへ移す。最初の前は無い（循環しない）。
     MoveToWorkspacePrev,
+    /// フォーカスを上の窓へ移す（スクロール列レイアウトでは列の中の上の窓）。
+    FocusUp,
+    /// フォーカスを下の窓へ移す（スクロール列レイアウトでは列の中の下の窓）。
+    FocusDown,
+    /// フォーカス窓を上へ動かす（スクロール列レイアウトでは列の中で入れ替える）。
+    MoveUp,
+    /// フォーカス窓を下へ動かす（スクロール列レイアウトでは列の中で入れ替える）。
+    MoveDown,
+    /// 最初の列へフォーカスを移す（スクロール列レイアウトのみ）。
+    FocusColumnFirst,
+    /// 最後の列へフォーカスを移す（スクロール列レイアウトのみ）。
+    FocusColumnLast,
+    /// フォーカス列を最初の位置へ移す（スクロール列レイアウトのみ）。
+    MoveColumnFirst,
+    /// フォーカス列を最後の位置へ移す（スクロール列レイアウトのみ）。
+    MoveColumnLast,
+    /// 右隣の列の先頭の窓を、フォーカス列の最下段へ取り込む（スクロール列レイアウトのみ）。
+    ConsumeWindowIntoColumn,
+    /// フォーカス窓を、右隣の新しい列へ出す（スクロール列レイアウトのみ）。
+    ExpelWindowFromColumn,
+    /// フォーカス列の幅を、次のプリセットへ変える（スクロール列レイアウトのみ）。
+    SwitchPresetColumnWidth,
+    /// フォーカス列を最大化する。最大化中なら元の幅に戻す（スクロール列レイアウトのみ）。
+    MaximizeColumn,
+    /// フォーカス列の幅を、作業領域の幅の割合にする（スクロール列レイアウトのみ）。
+    SetColumnWidth(contrast_core::Ratio),
+    /// フォーカス列の幅を、作業領域の幅の `n` パーセントぶん増減する（スクロール列レイアウトのみ）。
+    AdjustColumnWidth(i8),
     /// フォーカス窓の Tiled / Floating を切り替える。
     ToggleFloating,
     /// フォーカス窓の全画面を切り替える。

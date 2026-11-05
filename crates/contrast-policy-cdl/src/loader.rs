@@ -71,7 +71,7 @@ impl ConfigLoader for CdlLoader {
                 }
             };
         match load_config(&resolver, &entry, self.limits, self.default_mod_key) {
-            Ok(config) => LoadOutcome::Loaded(config),
+            Ok(config) => LoadOutcome::Loaded(Box::new(config)),
             Err(diags) => LoadOutcome::Failed(diags),
         }
     }

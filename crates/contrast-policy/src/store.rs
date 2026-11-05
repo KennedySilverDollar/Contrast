@@ -178,7 +178,7 @@ impl ConfigStore {
     /// `loader` で `path` を読み直し、成功したときだけ差し替える。
     pub fn reload(&self, loader: &dyn ConfigLoader, path: &Path) -> ReloadOutcome {
         match loader.load(path) {
-            LoadOutcome::Loaded(config) => self.replace(config),
+            LoadOutcome::Loaded(config) => self.replace(*config),
             LoadOutcome::Absent => ReloadOutcome::Absent,
             LoadOutcome::Failed(diagnostics) => ReloadOutcome::Failed(diagnostics),
         }
@@ -215,7 +215,7 @@ pub fn load_or_builtin(
         return (builtin, StartupStatus::NoPath);
     };
     match loader.load(path) {
-        LoadOutcome::Loaded(config) => (config, StartupStatus::Loaded),
+        LoadOutcome::Loaded(config) => (*config, StartupStatus::Loaded),
         LoadOutcome::Absent => (builtin, StartupStatus::Absent),
         LoadOutcome::Failed(diagnostics) => (builtin, StartupStatus::Failed(diagnostics)),
     }
@@ -227,7 +227,7 @@ impl Policy for ConfigStore {
     }
 
     fn layout_settings(&self) -> crate::LayoutSettings {
-        self.config().settings.layout
+        self.config().settings.layout.clone()
     }
 
     fn cursor_settings(&self) -> crate::CursorSettings {
@@ -410,7 +410,7 @@ mod tests {
             &Fixed(|| {
                 let mut s = Settings::builtin();
                 s.workspaces = 7;
-                LoadOutcome::Loaded(Config::new(s, None))
+                LoadOutcome::Loaded(Box::new(Config::new(s, None)))
             }),
             Some(path),
             Config::builtin(),

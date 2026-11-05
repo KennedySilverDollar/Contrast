@@ -92,6 +92,8 @@ pub struct Contrast {
     pub vt_switch: Option<Box<dyn FnMut(i32)>>,
     /// クライアントが指定した（または既定の）カーソル。DRM バックエンドが描く。
     pub cursor_status: smithay::input::pointer::CursorImageStatus,
+    /// 起動時に決まった窓の並べ方。リロードでは変わらない（core を作り直さないため）。
+    pub layout_mode: contrast_core::LayoutMode,
     /// libinput のデバイス（設定のリロードで再適用するために覚える。DRM バックエンドだけが入れる）。
     pub input_devices: Vec<smithay::reexports::input::Device>,
     /// キー処理の中で見つかった VT 切り替えの要求（キー処理が終わってから実行する）。
@@ -123,8 +125,16 @@ impl Contrast {
         seat.add_pointer();
 
         let socket_name = Self::init_wayland_listener(display, event_loop);
+        let layout = policy.layout_settings();
+        let mut core_config = contrast_core::CoreConfig::new(policy.workspace_count())
+            .with_layout(layout.mode)
+            .with_preset_column_widths(layout.preset_column_widths.clone());
+        if let Some(width) = layout.default_column_width {
+            core_config = core_config.with_default_column_width(width);
+        }
+        let layout_mode = layout.mode;
         let core = ContrastCore::new(
-            contrast_core::CoreConfig::new(policy.workspace_count()),
+            core_config,
             PortPlacement::new(Rc::clone(&policy)),
             contrast_core::Columns::new(),
         );
@@ -161,6 +171,7 @@ impl Contrast {
             vt_switch: None,
             pending_vt: None,
             input_devices: Vec::new(),
+            layout_mode,
             cursor_status: smithay::input::pointer::CursorImageStatus::default_named(),
         }
     }

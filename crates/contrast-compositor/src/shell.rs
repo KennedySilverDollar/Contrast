@@ -121,6 +121,13 @@ impl Contrast {
             .collect()
     }
 
+    /// core が窓を並べる領域（今は出力の論理矩形。排他領域はまだ core に渡していない）。出力がなければ `None`。
+    fn work_area(&self) -> Option<Rect> {
+        let output = self.space.outputs().next()?;
+        let geo = self.space.output_geometry(output)?;
+        Rect::new(geo.loc.x, geo.loc.y, geo.size.w, geo.size.h)
+    }
+
     /// 表示中の窓に全画面のものがあるか。
     pub fn has_visible_fullscreen(&self) -> bool {
         self.core
@@ -136,14 +143,19 @@ impl Contrast {
         if state != WindowState::Tiled || (layout.gap <= 0 && layout.outer_gap <= 0) {
             return tile;
         }
-        let view = self.core.view();
-        let tiles = view
-            .visible_windows()
-            .into_iter()
-            .filter(|w| w.state == WindowState::Tiled)
-            .filter_map(|w| w.rect);
-        let bounds = crate::geometry::bounds_of(tiles).unwrap_or(tile);
-        crate::geometry::frame_rect(tile, bounds, layout.gap, layout.outer_gap)
+        let bounds = if self.layout_mode == contrast_core::LayoutMode::Scrolling {
+            // スクロール列では、タイルが画面の外まで続く。画面（作業領域）の端に接する辺に `outerGap` を引く。
+            self.work_area()
+        } else {
+            let view = self.core.view();
+            let tiles = view
+                .visible_windows()
+                .into_iter()
+                .filter(|w| w.state == WindowState::Tiled)
+                .filter_map(|w| w.rect);
+            crate::geometry::bounds_of(tiles)
+        };
+        crate::geometry::frame_rect(tile, bounds.unwrap_or(tile), layout.gap, layout.outer_gap)
     }
 
     /// 表示中の窓の配置をポリシーの今の値（枠の太さなど）で取り直す。設定のリロードのあとに呼ぶ。
