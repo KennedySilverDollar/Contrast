@@ -9,11 +9,20 @@
 // Mod+Alt+… の 3 つは Mod が Alt のとき Mod+… と同じキーになってしまうので、`super+alt+…` と書く（niri の Mod=Super と同じ）。
 // 縦方向（Down/Up と J/K）の移動は、Contrast に列の中の縦の並びが無いので、並びの次/前へ代用する。
 "use cdl 1";
-import { Contrast, Appearance, Workspaces, Keybind } from "host:contrast";
+import { Contrast, Appearance, Layout, Cursor, Input, Workspaces, Keybind } from "host:contrast";
 
 export default (
   <Contrast>
-    <Appearance borderWidth={px(3)} focusColor={color("#66a6ff")} background={color("#1f2433")} />
+    {/* niri の layout.gaps 16 / focus-ring（width 4、active #7fc8ff、inactive #505050）に合わせる。
+        niri の config には geometry-corner-radius と shadow が無いので、角丸 0・影なし。
+        使うなら radius={px(12)} shadowBlur={px(30)} shadowOffsetY={px(5)} shadowColor={color("#00000070")} を足す。 */}
+    <Appearance borderWidth={px(4)} focusColor={color("#7fc8ff")} borderColor={color("#505050")}
+      background={color("#1f2433")} radius={px(0)} />
+    <Layout gap={px(16)} outerGap={px(16)} />
+    {/* niri の cursor { xcursor-theme "Cecilia"; xcursor-size 24 } */}
+    <Cursor theme="Cecilia" size={24} />
+    {/* niri の input { touchpad { tap; natural-scroll } } */}
+    <Input tapToClick={true} naturalScroll={true} />
     {/* niri の Mod+1〜9 に合わせて 9 つ */}
     <Workspaces count={9} />
 
@@ -88,5 +97,24 @@ export default (
     {/* 全画面（fullscreen-window）。フローティングの切り替えは niri の既定の Mod+V */}
     <Keybind keys="mod+shift+f" action="toggle-fullscreen" />
     <Keybind keys="mod+v" action="toggle-floating" />
+
+    {/* ---- 実現できないもの（contrast-core の変更が要る。docs/niri-parity.md） ----
+        N3（レイアウト）待ち:
+          Mod+Home / Mod+End                    focus-column-first / last
+          Mod+Ctrl+Home / Mod+Ctrl+End          move-column-to-first / last
+          Mod+Comma / Mod+Period                consume-window-into-column / expel-window-from-column
+          Mod+BracketLeft / Mod+BracketRight    consume-or-expel-window-left / right
+          Mod+R / Mod+Shift+R / Mod+Ctrl+R      switch-preset-column-width / switch-preset-window-height / reset-window-height
+          Mod+F / Mod+C                         maximize-column / center-column
+          Mod+Minus / Mod+Equal                 set-column-width ∓10%
+          Mod+Shift+Minus / Mod+Shift+Equal     set-window-height ∓10%
+          preset-column-widths（1/3・1/2・2/3）と default-column-width（1/2）、focus-window-up/down の縦の並び
+        N4（ワークスペース・モニタ）待ち:
+          Mod+Shift+矢印/H/J/K/L（+Ctrl）       focus-monitor-* / move-column-to-monitor-*
+          Mod+Shift+Page_Down / Page_Up / U / I move-workspace-down / up
+        N5 待ち:
+          Mod+ホイール系、Print 系（screenshot）、Mod+Shift+Slash（hotkey overlay）、Mod+Shift+P（power-off-monitors）、overview
+        N2（コア不要）待ち:
+          spawn-at-startup（fcitx5・ironbar・swaybg・mako・udiskie）、environment、アニメーション */}
   </Contrast>
 );

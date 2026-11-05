@@ -9,17 +9,25 @@ use smithay::{
         ImportDma,
         damage::OutputDamageTracker,
         element::{
-            Kind, memory::MemoryRenderBufferRenderElement, render_elements,
+            AsRenderElements, Kind, memory::MemoryRenderBufferRenderElement, render_elements,
             solid::SolidColorRenderElement, surface::WaylandSurfaceRenderElement,
         },
-        gles::{GlesRenderer, GlesTarget},
+        gles::{GlesRenderer, GlesTarget, Uniform, element::PixelShaderElement},
     },
-    desktop::space::SpaceRenderElements,
+    desktop::{LayerSurface, layer_map_for_output},
     output::Output,
+    utils::{Logical, Rectangle, Scale},
     wayland::dmabuf::{DmabufFeedback, DmabufFeedbackBuilder},
+    wayland::shell::wlr_layer::Layer,
 };
 
 use crate::state::Contrast;
+
+mod look;
+mod rounded;
+
+use look::Shaders;
+use rounded::RoundedSurface;
 
 /// linux-dmabuf の既定のフィードバック: 描画デバイス（`renderer` の EGL デバイスの render node）と、
 /// レンダラーが受け付けるフォーマット。デバイスを特定できなければ `None`（v3 で公開する）。
@@ -56,38 +64,103 @@ impl fmt::Display for RenderError {
 impl std::error::Error for RenderError {}
 
 render_elements! {
-    /// DRM の `DrmOutput::render_frame` に渡す要素。`render_output` と同じく、枠・カーソル（custom）が前、Space（窓とレイヤー面）が後ろ。
+    /// DRM の `DrmOutput::render_frame` と winit の描画に渡す要素。前から順に、カーソル・枠・上のレイヤー・窓・影・下のレイヤー。
     pub SceneElement<=GlesRenderer>;
     /// 枠の帯と、簡易カーソル。
     Solid=SolidColorRenderElement,
     /// テーマのカーソル。
     Memory=MemoryRenderBufferRenderElement<GlesRenderer>,
-    /// クライアントが指定したカーソルの面。
+    /// 窓・レイヤー面・クライアントが指定したカーソルの面。
     Surface=WaylandSurfaceRenderElement<GlesRenderer>,
-    /// Space の要素（窓・レイヤー面・popup）。
-    Space=SpaceRenderElements<GlesRenderer, WaylandSurfaceRenderElement<GlesRenderer>>,
+    /// 角丸で描く窓の面。
+    Rounded=RoundedSurface,
+    /// 枠の輪と影（ピクセルシェーダ）。
+    Pixel=PixelShaderElement,
 }
 
-/// 出力 1 枚分の要素を前から順に集める。`cursor` があれば最前面。`render_scene` と同じ値・順序。
+/// 出力 1 枚分の要素を前から順に集める。`cursor` があれば最前面。
 pub fn scene_elements(
     state: &mut Contrast,
     renderer: &mut GlesRenderer,
     output: &Output,
     cursor: Vec<SceneElement>,
 ) -> Result<Vec<SceneElement>, RenderError> {
-    let borders = border_elements(state);
-    let space =
-        smithay::desktop::space::space_render_elements(renderer, [&state.space], output, 1.0)
-            .map_err(|e| RenderError::Render(e.to_string()))?;
-    let mut elements: Vec<SceneElement> =
-        Vec::with_capacity(cursor.len() + borders.len() + space.len());
-    elements.extend(cursor);
-    elements.extend(borders.into_iter().map(SceneElement::Solid));
-    elements.extend(space.into_iter().map(SceneElement::Space));
+    let appearance = state.policy.appearance();
+    let wants_shaders = appearance.radius > 0 || appearance.shadow.blur > 0;
+    let shaders = if wants_shaders {
+        Shaders::get(renderer)
+    } else {
+        None
+    };
+    let radius = if shaders.is_some() {
+        appearance.radius.max(0)
+    } else {
+        0
+    };
+    let scale = output.current_scale().fractional_scale();
+    let Some(geo) = state.space.output_geometry(output) else {
+        return Err(RenderError::Render("output is not mapped".to_string()));
+    };
+
+    let mut elements: Vec<SceneElement> = cursor;
+    match shaders.as_ref().filter(|_| radius > 0) {
+        Some(sh) => elements.extend(ring_elements(state, sh, radius)),
+        None => elements.extend(border_elements(state).into_iter().map(SceneElement::Solid)),
+    }
+
+    let layer_map = layer_map_for_output(output);
+    let (lower, upper): (Vec<&LayerSurface>, Vec<&LayerSurface>) = layer_map
+        .layers()
+        .rev()
+        .partition(|s| matches!(s.layer(), Layer::Background | Layer::Bottom));
+    let layer_elements = |renderer: &mut GlesRenderer, layers: Vec<&LayerSurface>| {
+        let mut out = Vec::new();
+        for surface in layers {
+            let Some(loc) = layer_map.layer_geometry(surface).map(|g| g.loc) else {
+                continue;
+            };
+            out.extend(
+                AsRenderElements::<GlesRenderer>::render_elements::<
+                    WaylandSurfaceRenderElement<GlesRenderer>,
+                >(
+                    surface,
+                    renderer,
+                    loc.to_physical_precise_round(scale),
+                    Scale::from(scale),
+                    1.0,
+                )
+                .into_iter()
+                .map(SceneElement::Surface),
+            );
+        }
+        out
+    };
+    elements.extend(layer_elements(renderer, upper));
+
+    // 窓。角丸のときは、全画面の窓があるあいだは切り抜かない。
+    let round = shaders
+        .as_ref()
+        .filter(|_| radius > 0 && !state.has_visible_fullscreen());
+    for e in state
+        .space
+        .render_elements_for_region(renderer, &geo, scale, 1.0)
+    {
+        elements.push(match round {
+            Some(sh) => {
+                SceneElement::Rounded(RoundedSurface::new(e, sh.rounded.clone(), radius as f32))
+            }
+            None => SceneElement::Surface(e),
+        });
+    }
+
+    if let Some(sh) = shaders.as_ref() {
+        elements.extend(shadow_elements(state, sh, &appearance, radius));
+    }
+    elements.extend(layer_elements(renderer, lower));
     Ok(elements)
 }
 
-/// 出力 1 枚分の絵（背景・窓・レイヤー面・枠）を `framebuffer` に描く。バックエンドには依存しない。
+/// 出力 1 枚分の絵（背景・窓・レイヤー面・枠・影）を `framebuffer` に描く。バックエンドには依存しない。
 ///
 /// 描画先の用意（bind）と提出（submit / queue_frame）は呼び出し側のバックエンドが行う。
 pub fn render_scene(
@@ -98,20 +171,11 @@ pub fn render_scene(
     damage_tracker: &mut OutputDamageTracker,
 ) -> Result<(), RenderError> {
     let background = state.policy.background();
-    let borders = border_elements(state);
-    smithay::desktop::space::render_output::<_, SolidColorRenderElement, _, _>(
-        output,
-        renderer,
-        framebuffer,
-        1.0,
-        0,
-        [&state.space],
-        &borders,
-        damage_tracker,
-        background,
-    )
-    .map(|_| ())
-    .map_err(|e| RenderError::Render(e.to_string()))
+    let elements = scene_elements(state, renderer, output, Vec::new())?;
+    damage_tracker
+        .render_output(renderer, framebuffer, 0, &elements, background)
+        .map(|_| ())
+        .map_err(|e| RenderError::Render(e.to_string()))
 }
 
 /// 提出したあとの後始末: クライアントへ frame コールバックを送り、Space・popup・レイヤーを整理する。
@@ -146,6 +210,94 @@ fn edges(tile: contrast_core::Rect, b: i32) -> Option<[Band; 4]> {
         (x, y + b, b, h - 2 * b),
         (x + w - b, y + b, b, h - 2 * b),
     ])
+}
+
+/// 論理矩形。
+fn logical(x: i32, y: i32, w: i32, h: i32) -> Rectangle<i32, Logical> {
+    Rectangle::new((x, y).into(), (w.max(1), h.max(1)).into())
+}
+
+/// 色をプリマルチプライドのアルファにする。
+fn premultiplied(c: [f32; 4]) -> [f32; 4] {
+    [c[0] * c[3], c[1] * c[3], c[2] * c[3], c[3]]
+}
+
+/// 角丸のときの枠の輪（フォーカス窓と、設定があればフォーカス外の窓）。
+fn ring_elements(state: &mut Contrast, sh: &Shaders, radius: i32) -> Vec<SceneElement> {
+    let b = state.policy.border_width();
+    if b <= 0 {
+        return Vec::new();
+    }
+    let ring = |rect: contrast_core::Rect, thickness: i32, color: [f32; 4]| {
+        SceneElement::Pixel(PixelShaderElement::new(
+            sh.ring.clone(),
+            logical(rect.x(), rect.y(), rect.width(), rect.height()),
+            None,
+            1.0,
+            vec![
+                Uniform::new("color", premultiplied(color)),
+                Uniform::new("radius", radius as f32),
+                Uniform::new("thickness", thickness as f32),
+            ],
+            Kind::Unspecified,
+        ))
+    };
+    let mut out = Vec::new();
+    if let Some(frame) = state.focused_tile() {
+        out.push(ring(frame, b, state.policy.focus_border_color()));
+    }
+    if let Some(color) = state.policy.unfocused_border_color() {
+        let thin = unfocused_width(b, state.policy.appearance().inactive_border_width);
+        if thin > 0 {
+            for frame in state.unfocused_tiles() {
+                out.push(ring(
+                    crate::geometry::window_rect(frame, b - thin),
+                    thin,
+                    color,
+                ));
+            }
+        }
+    }
+    out
+}
+
+/// 窓の影（全画面でない表示中の窓ごと）。
+fn shadow_elements(
+    state: &mut Contrast,
+    sh: &Shaders,
+    appearance: &contrast_policy::Appearance,
+    radius: i32,
+) -> Vec<SceneElement> {
+    let s = appearance.shadow;
+    if s.blur <= 0 {
+        return Vec::new();
+    }
+    let frame_radius = (radius + appearance.border_width.max(0)) as f32;
+    let mut frames: Vec<contrast_core::Rect> = state.focused_tile().into_iter().collect();
+    frames.extend(state.unfocused_tiles());
+    frames
+        .into_iter()
+        .map(|f| {
+            let area = logical(
+                f.x() - s.blur + s.offset_x,
+                f.y() - s.blur + s.offset_y,
+                f.width() + 2 * s.blur,
+                f.height() + 2 * s.blur,
+            );
+            SceneElement::Pixel(PixelShaderElement::new(
+                sh.shadow.clone(),
+                area,
+                None,
+                1.0,
+                vec![
+                    Uniform::new("color", premultiplied(s.color)),
+                    Uniform::new("radius", frame_radius),
+                    Uniform::new("blur", s.blur as f32),
+                ],
+                Kind::Unspecified,
+            ))
+        })
+        .collect()
 }
 
 /// フォーカス外の枠の太さ。未指定は `border`、指定は 0〜`border` に収める。

@@ -195,3 +195,17 @@ fn explicit_mod_key_beats_the_loader_default() -> Result<(), String> {
     assert_eq!(load_with(&CdlLoader::new(), &none)?.mod_key, ModKey::Alt);
     Ok(())
 }
+
+#[test]
+fn niri_example_carries_the_niri_look() -> Result<(), String> {
+    let loader = CdlLoader::new().with_default_mod_key(ModKey::Super);
+    let s = load_with(&loader, &example("niri.cdl"))?;
+    assert_eq!((s.layout.gap, s.layout.outer_gap), (16, 16));
+    assert_eq!(s.appearance.border_width, 4);
+    assert_eq!(s.appearance.radius, 0);
+    assert!(s.appearance.border_color.is_some());
+    assert_eq!(s.cursor.theme.as_deref(), Some("Cecilia"));
+    assert_eq!(s.cursor.size, Some(24));
+    assert!(s.input.tap_to_click && s.input.natural_scroll);
+    Ok(())
+}

@@ -121,6 +121,15 @@ impl Contrast {
             .collect()
     }
 
+    /// 表示中の窓に全画面のものがあるか。
+    pub fn has_visible_fullscreen(&self) -> bool {
+        self.core
+            .view()
+            .visible_windows()
+            .iter()
+            .any(|w| w.state == WindowState::Fullscreen)
+    }
+
     /// タイルから、隙間（`gap`・`outerGap`）を引いたフレーム（枠線の外側の矩形）。浮動・全画面は隙間なし。
     pub fn frame_of(&self, tile: Rect, state: WindowState) -> Rect {
         let layout = self.policy.layout_settings();
