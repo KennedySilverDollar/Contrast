@@ -6,6 +6,7 @@ use alloc::vec::Vec;
 use crate::application::effect::Effect;
 use crate::domain::geometry::Rect;
 use crate::domain::id::{EntityId, ExternalKey, WorkspaceIndex};
+use crate::domain::insets::Insets;
 use crate::domain::output::{Output, OutputName};
 use crate::domain::state::State;
 use crate::error::CoreError;
@@ -37,6 +38,7 @@ pub fn handle(
             name,
             geometry,
             shown,
+            insets: Insets::default(),
         },
     );
     Ok(vec![Effect::Registered {

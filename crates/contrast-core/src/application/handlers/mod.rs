@@ -9,6 +9,7 @@ mod move_to_workspace;
 mod move_window;
 mod output_added;
 mod output_changed;
+mod output_insets_changed;
 mod output_removed;
 mod switch_workspace;
 mod toggle_floating;
@@ -45,6 +46,9 @@ pub fn dispatch<P: Policy>(
         } => output_added::handle(state, key, name, geometry),
         Command::OutputRemoved(key) => output_removed::handle(state, key),
         Command::OutputChanged { key, geometry } => output_changed::handle(state, key, geometry),
+        Command::OutputInsetsChanged { key, insets } => {
+            output_insets_changed::handle(state, key, insets)
+        }
         Command::WindowMapped { key, meta } => window_mapped::handle(state, policy, key, meta),
         Command::WindowUnmapped(key) => window_unmapped::handle(state, key),
         Command::WindowMetaChanged { key, meta } => window_meta_changed::handle(state, key, meta),

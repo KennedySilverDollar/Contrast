@@ -11,6 +11,7 @@ extern crate alloc;
 mod domain {
     pub mod geometry;
     pub mod id;
+    pub mod insets;
     pub mod output;
     pub mod state;
     pub mod window;
@@ -40,6 +41,7 @@ pub use domain::geometry::{Point, Rect, Size};
 pub use domain::id::{
     EntityId, ExternalKey, IdGen, IdKind, KeyMap, OutputId, WindowId, WorkspaceId, WorkspaceIndex,
 };
+pub use domain::insets::Insets;
 pub use domain::output::OutputName;
 pub use domain::window::{WindowMeta, WindowState};
 pub use error::{CoreError, LayoutError};

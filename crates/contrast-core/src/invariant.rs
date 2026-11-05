@@ -107,7 +107,10 @@ fn check_i4(state: &State) -> Result<(), InvariantViolation> {
 /// I5: 表示中の Tiled 窓は作業領域内に収まり、互いに重ならない。
 fn check_i5(state: &State) -> Result<(), InvariantViolation> {
     for o in state.outputs.values() {
-        let area = o.work_area();
+        // 作業領域が作れない出力は handler が拒否するので、ここには来ない。
+        let Ok(area) = o.work_area() else {
+            continue;
+        };
         let Some(ws) = state.workspace(o.shown) else {
             continue;
         };
@@ -176,6 +179,7 @@ mod tests {
     use super::{InvariantViolation, check};
     use crate::domain::geometry::Rect;
     use crate::domain::id::{ExternalKey, IdKind, OutputId, WindowId, WorkspaceIndex};
+    use crate::domain::insets::Insets;
     use crate::domain::output::{Output, OutputName};
     use crate::domain::state::State;
     use crate::domain::window::{Window, WindowMeta, WindowState};
@@ -207,6 +211,7 @@ mod tests {
             name: OutputName::new("test"),
             geometry: area()?,
             shown: WorkspaceIndex::new(0),
+            insets: Insets::default(),
         };
         state.outputs.insert(oid, output);
         state.output_keys.insert(ExternalKey::new(1000), oid).ok()?;
@@ -273,6 +278,7 @@ mod tests {
             name: OutputName::new("second"),
             geometry: area().ok_or("area")?,
             shown: WorkspaceIndex::new(0),
+            insets: Insets::default(),
         };
         state.outputs.insert(second, output);
         state

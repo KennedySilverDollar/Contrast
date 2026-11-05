@@ -3,7 +3,7 @@
 //! 守る不変条件:
 //! - I5 Tiled 窓は `Layout` に任せる（作業領域内・重なりなし）。
 //! - D8 Floating 窓は要求サイズ（なければ作業領域の半分）を中央に置き、作業領域に収まるよう切り詰める。
-//! - D9 Fullscreen 窓は出力の論理矩形全体。
+//! - D9・D33 Fullscreen 窓は insets を無視した出力の論理矩形全体。
 //!
 //! 非表示のワークスペースの窓は最後の矩形を保つ。
 
@@ -19,13 +19,12 @@ use crate::layout::Layout;
 /// 全出力の表示ワークスペースについて窓の矩形を計算し直す。
 ///
 /// # Errors
-/// Layout の失敗は `CoreError::Layout`、浮動矩形が i32 に収まらなければ `GeometryOverflow`。
+/// 作業領域が作れない・Layout の失敗は `CoreError::Layout`、浮動矩形が i32 に収まらなければ `GeometryOverflow`。
 pub fn arrange<L: Layout>(state: &mut State, layout: &L) -> Result<(), CoreError> {
-    let shown: Vec<_> = state
-        .outputs
-        .values()
-        .map(|o| (o.work_area(), o.geometry, o.shown))
-        .collect();
+    let mut shown = Vec::with_capacity(state.outputs.len());
+    for o in state.outputs.values() {
+        shown.push((o.work_area()?, o.geometry, o.shown));
+    }
     for (area, geometry, index) in shown {
         let ids: Vec<WindowId> = state
             .workspace(index)

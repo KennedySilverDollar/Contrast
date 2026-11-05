@@ -2,6 +2,7 @@
 
 use crate::domain::geometry::Rect;
 use crate::domain::id::{ExternalKey, WorkspaceIndex};
+use crate::domain::insets::Insets;
 use crate::domain::output::OutputName;
 use crate::domain::window::WindowMeta;
 
@@ -26,6 +27,13 @@ pub enum Command {
         key: ExternalKey,
         /// 新しい論理矩形。
         geometry: Rect,
+    },
+    /// 出力の作業領域の余白が変わった（D31）。
+    OutputInsetsChanged {
+        /// シェル側の識別子。
+        key: ExternalKey,
+        /// 新しい余白。
+        insets: Insets,
     },
     /// トップレベル窓が現れた。
     WindowMapped {
