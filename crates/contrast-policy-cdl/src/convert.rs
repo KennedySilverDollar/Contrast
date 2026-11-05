@@ -51,6 +51,20 @@ impl Ctx<'_> {
     }
 }
 
+/// 重複検査用のキー: (alt, shift, ctrl, super, キー名)。
+type KeyId = (bool, bool, bool, bool, String);
+
+/// `KeySpec` を重複検査用のキーにする。
+fn key_id(k: &KeySpec) -> KeyId {
+    (
+        k.mods.alt,
+        k.mods.shift,
+        k.mods.ctrl,
+        k.mods.logo,
+        k.keysym.clone(),
+    )
+}
+
 /// `n` が `lo..=hi` の整数ならその値。
 fn integer_in(n: f64, lo: u32, hi: u32) -> Option<u32> {
     if !n.is_finite() || n.fract() != 0.0 || n < f64::from(lo) || n > f64::from(hi) {
@@ -99,13 +113,14 @@ pub(crate) fn to_settings(
     }
 
     // 2 回目: Keybind。
-    let mut seen: Vec<(KeySpec, (u32, u32))> = Vec::new();
+    let mut seen: BTreeMap<KeyId, (u32, u32)> = BTreeMap::new();
     for node in keybind_nodes {
         let Some(binding) = read_keybind(&mut cx, node, &settings) else {
             continue;
         };
         let here = position(&cx, node);
-        if let Some((_, (line, col))) = seen.iter().find(|(k, _)| *k == binding.key) {
+        let id = key_id(&binding.key);
+        if let Some((line, col)) = seen.get(&id) {
             cx.error(
                 node,
                 codes::DUPLICATE_KEY,
@@ -116,7 +131,7 @@ pub(crate) fn to_settings(
             );
             continue;
         }
-        seen.push((binding.key.clone(), here));
+        seen.insert(id, here);
         settings.keybinds.push(binding);
     }
 
