@@ -4,13 +4,20 @@
 //! 再配置と残りの Effect は `Core::apply` が行う。Err を返したら複製は捨てられる（I7）。
 
 mod close_focused;
+mod consume_window;
+mod expel_window;
+mod focus_column;
 mod focus_direction;
+mod maximize_column;
+mod move_column;
 mod move_to_workspace;
 mod move_window;
 mod output_added;
 mod output_changed;
 mod output_insets_changed;
 mod output_removed;
+mod set_column_width;
+mod switch_preset_width;
 mod switch_workspace;
 mod toggle_floating;
 mod toggle_fullscreen;
@@ -70,16 +77,16 @@ fn dispatch_action(state: &mut State, action: Action) -> Result<Vec<Effect>, Cor
         Action::ToggleFloating => toggle_floating::handle(state),
         Action::ToggleFullscreen => toggle_fullscreen::handle(state),
         Action::CloseFocused => close_focused::handle(state),
-        // D45: `Scrolling` 専用の Action。実装は後続のステップで足す。
-        Action::FocusColumnFirst
-        | Action::FocusColumnLast
-        | Action::MoveColumnToFirst
-        | Action::MoveColumnToLast
-        | Action::ConsumeWindowIntoColumn
-        | Action::ExpelWindowFromColumn
-        | Action::SwitchPresetColumnWidth
-        | Action::MaximizeColumn
-        | Action::SetColumnWidth(_) => Ok(Vec::new()),
+        // D42〜D45: `Scrolling` 専用の Action。`Equal` では各 handler が状態不変で `Ok` を返す。
+        Action::FocusColumnFirst => focus_column::handle(state, focus_column::End::First),
+        Action::FocusColumnLast => focus_column::handle(state, focus_column::End::Last),
+        Action::MoveColumnToFirst => move_column::handle(state, focus_column::End::First),
+        Action::MoveColumnToLast => move_column::handle(state, focus_column::End::Last),
+        Action::ConsumeWindowIntoColumn => consume_window::handle(state),
+        Action::ExpelWindowFromColumn => expel_window::handle(state),
+        Action::SwitchPresetColumnWidth => switch_preset_width::handle(state),
+        Action::MaximizeColumn => maximize_column::handle(state),
+        Action::SetColumnWidth(width) => set_column_width::handle(state, width),
     }
 }
 

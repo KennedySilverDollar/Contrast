@@ -1,12 +1,15 @@
 //! FocusDirection: フォーカス窓の矩形中心から見てその方向にある、最も近い表示中の窓へ移る（D10）。
 //!
 //! 距離は中心間のマンハッタン距離、同距離は WindowId 最小。候補なしは状態不変で `Ok`。
+//! `Scrolling` で列にある窓からは、列の構造に従う（D42）。
 
 use alloc::vec::Vec;
 
 use crate::application::command::Direction;
 use crate::application::effect::Effect;
 use crate::application::handlers::focused;
+use crate::application::scrolling::{self, FocusPos};
+use crate::domain::column::LayoutMode;
 use crate::domain::geometry::Point;
 use crate::domain::state::State;
 use crate::error::CoreError;
@@ -17,6 +20,11 @@ use crate::error::CoreError;
 /// フォーカスが None なら `NoFocusedWindow`。
 pub fn handle(state: &mut State, direction: Direction) -> Result<Vec<Effect>, CoreError> {
     let id = focused(state)?;
+    if state.layout.mode == LayoutMode::Scrolling
+        && let Some(pos) = scrolling::focus_pos(state)?
+    {
+        return Ok(focus_in_columns(state, pos, direction));
+    }
     let Some(from) = state
         .windows
         .get(&id)
@@ -37,6 +45,36 @@ pub fn handle(state: &mut State, direction: Direction) -> Result<Vec<Effect>, Co
         state.set_focus(target);
     }
     Ok(Vec::new())
+}
+
+/// D42: `Scrolling` では、左右は隣の列の「最後にフォーカスした窓」、上下は列の中の上下の窓へ移す。端では何もしない。
+fn focus_in_columns(state: &mut State, pos: FocusPos, direction: Direction) -> Vec<Effect> {
+    let target = state.workspace(pos.ws).and_then(|ws| match direction {
+        Direction::Left => pos
+            .col
+            .checked_sub(1)
+            .and_then(|c| ws.columns.get(c))
+            .and_then(|c| c.focus_target()),
+        Direction::Right => pos
+            .col
+            .checked_add(1)
+            .and_then(|c| ws.columns.get(c))
+            .and_then(|c| c.focus_target()),
+        Direction::Up => pos
+            .row
+            .checked_sub(1)
+            .and_then(|r| ws.columns.get(pos.col)?.windows.get(r))
+            .copied(),
+        Direction::Down => pos
+            .row
+            .checked_add(1)
+            .and_then(|r| ws.columns.get(pos.col)?.windows.get(r))
+            .copied(),
+    });
+    if target.is_some() {
+        state.set_focus(target);
+    }
+    Vec::new()
 }
 
 /// `to` が `from` から見て `direction` の側にあるか。
