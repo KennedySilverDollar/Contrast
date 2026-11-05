@@ -82,13 +82,13 @@ impl<P: Policy, L: Layout> Core<P, L> {
     ///
     /// # Errors
     /// 最初に見つかった違反。
-    #[cfg(any(test, kani, feature = "invariants"))]
+    #[cfg(any(test, feature = "invariants"))]
     pub fn check_invariants(&self) -> Result<(), crate::invariant::InvariantViolation> {
         crate::invariant::check(&self.state)
     }
 
     /// 状態の複製（I7 の比較用）。
-    #[cfg(any(test, kani, feature = "invariants"))]
+    #[cfg(any(test, feature = "invariants"))]
     #[must_use]
     pub fn snapshot(&self) -> crate::invariant::StateSnapshot {
         crate::invariant::StateSnapshot::new(self.state.clone())

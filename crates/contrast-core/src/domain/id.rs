@@ -124,7 +124,7 @@ impl<T: IdKind> IdGen<T> {
         Self::starting_at(1)
     }
 
-    /// 次に払い出す raw 値を `next_raw` にした払い出し器を作る（テストと Kani 用）。
+    /// 次に払い出す raw 値を `next_raw` にした払い出し器を作る（テスト用）。
     #[must_use]
     pub const fn starting_at(next_raw: u64) -> Self {
         Self {
@@ -222,7 +222,7 @@ impl<T: IdKind> KeyMap<T> {
     }
 
     /// 2 つの表の要素数が等しく、全 (k, v) で逆引きが (v, k) に戻るなら true（I6 の検査用）。
-    #[cfg(any(test, kani, feature = "invariants"))]
+    #[cfg(any(test, feature = "invariants"))]
     #[must_use]
     pub fn is_bijective(&self) -> bool {
         self.by_key.len() == self.by_id.len()

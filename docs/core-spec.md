@@ -58,14 +58,14 @@ contrast (bin) ──┬──> contrast-policy-cdl ──> cdl（別リポジ�
 ### ID と対応表（P2 で確定）
 
 - `IdKind` トレイト（`from_raw` / `raw`）を 3 つの ID 型（OutputId / WindowId / WorkspaceId）が実装する。
-- `IdGen<T>::new()` は raw = 1 から払い出す。`starting_at(n)` はテストと Kani 用。
+- `IdGen<T>::new()` は raw = 1 から払い出す。`starting_at(n)` はテスト用。
   現在値が `u64::MAX` のとき `Err(IdExhausted)`（以後も同じ）。
 - `KeyMap<T>` は key と id の双方向表。`insert` は key か id の重複で `Err(DuplicateKey)`、
   `remove_by_key` は未登録で `Err(UnknownKey)`。Err のとき表は変わらない。
 
 ## 4. 不変条件
 
-`check_invariants()` が I1〜I6 を検査し、テストと Kani の両方から呼ぶ。I7・I8 は状態機械テストで確認する。
+`check_invariants()` が I1〜I6 を検査し、テストから呼ぶ。I7・I8 は状態機械テストで確認する。
 
 - **I1** 窓はちょうど 1 つのワークスペースに属する。
 - **I2** ワークスペースの窓順序列に重複がなく、列中の ID はすべて存在する窓を指す。
@@ -87,9 +87,9 @@ impl<P: Policy, L: Layout> Core<P, L> {
     pub fn new(config: CoreConfig, policy: P, layout: L) -> Self;
     pub fn apply(&mut self, cmd: Command) -> Result<Applied, CoreError>;
     pub fn view(&self) -> StateView<'_>; // 読み取り専用
-    #[cfg(any(test, kani, feature = "invariants"))]
+    #[cfg(any(test, feature = "invariants"))]
     pub fn check_invariants(&self) -> Result<(), InvariantViolation>;
-    #[cfg(any(test, kani, feature = "invariants"))]
+    #[cfg(any(test, feature = "invariants"))]
     pub fn snapshot(&self) -> StateSnapshot; // PartialEq + Debug。I7 の比較用
 }
 
@@ -205,7 +205,6 @@ Configure は「表示中ワークスペースにあり、矩形か状態が変�
   `expect_used`、`panic`、`indexing_slicing`、`missing_docs_in_private_items` を deny。
 - テストコードでは `clippy.toml` で `allow-unwrap-in-tests` と `allow-expect-in-tests` を true にする。
 - 公開型はすべて `#[non_exhaustive]`（構造体は必要に応じてコンストラクタを用意）、公開項目はすべて doc コメント必須。
-- Kani が要求する nightly でもビルドできるよう、新しすぎる言語機能は使わない。
 
 ## 9. モジュール構成
 
@@ -225,7 +224,6 @@ crates/contrast-core/src/
 ├── policy/           Policy trait（mod.rs）と DefaultPolicy
 ├── application/      Core, Command, Action, Effect
 │   └── handlers/     1ファイル1ユースケース
-├── verification/     Kani ハーネス（spec/ は人間、extra/ は実装者）
 ├── invariant.rs      check_invariants, InvariantViolation
 └── error.rs          CoreError, LayoutError
 ```

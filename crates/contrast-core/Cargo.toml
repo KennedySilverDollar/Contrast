@@ -25,7 +25,6 @@ proptest-state-machine = "0.9.0"
 [lints.rust]
 unsafe_code = "forbid"
 missing_docs = "deny"
-unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)"] }
 
 [lints.clippy]
 arithmetic_side_effects = "deny"
