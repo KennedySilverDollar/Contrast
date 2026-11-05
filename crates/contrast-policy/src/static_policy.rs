@@ -42,6 +42,10 @@ impl StaticPolicy {
 }
 
 impl Policy for StaticPolicy {
+    fn input_settings(&self) -> crate::InputSettings {
+        self.store.input_settings()
+    }
+
     fn background(&self) -> [f32; 4] {
         self.store.background()
     }

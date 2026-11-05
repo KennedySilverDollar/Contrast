@@ -104,6 +104,7 @@ pub(crate) fn to_settings(
         match child.name() {
             "Appearance" => read_appearance(&mut cx, child, &mut settings),
             "Workspaces" => read_workspaces(&mut cx, child, &mut settings),
+            "Input" => read_input(&mut cx, child, &mut settings),
             "Keybind" => keybind_nodes.push(child),
             other => cx.error(
                 child,
@@ -213,6 +214,30 @@ fn read_workspaces(cx: &mut Ctx<'_>, node: Node<'_>, settings: &mut Settings) {
             codes::BAD_WORKSPACE_COUNT,
             format!("`count` は 1〜{MAX_WORKSPACES} の整数（{count} は使えない）"),
         ),
+    }
+}
+
+/// `Input` を読む。省略した prop は既定のまま。`accelSpeed` は -1〜1 の数。
+fn read_input(cx: &mut Ctx<'_>, node: Node<'_>, settings: &mut Settings) {
+    if let Some(v) = cx.optional::<bool>(node, "tapToClick") {
+        settings.input.tap_to_click = v;
+    }
+    if let Some(v) = cx.optional::<bool>(node, "naturalScroll") {
+        settings.input.natural_scroll = v;
+    }
+    if let Some(v) = cx.optional::<bool>(node, "disableWhileTyping") {
+        settings.input.disable_while_typing = v;
+    }
+    if let Some(speed) = cx.optional::<f64>(node, "accelSpeed") {
+        if speed.is_finite() && (-1.0..=1.0).contains(&speed) {
+            settings.input.accel_speed = speed;
+        } else {
+            cx.error(
+                node,
+                codes::BAD_PROP,
+                format!("`accelSpeed` は -1〜1 の数（{speed} は使えない）"),
+            );
+        }
     }
 }
 

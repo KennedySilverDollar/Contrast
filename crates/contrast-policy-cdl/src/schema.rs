@@ -27,9 +27,10 @@ pub(crate) fn contrast_schema() -> Result<Schema, Vec<String>> {
             MODULE,
             ComponentDef::new("Contrast")
                 .optional_prop("modKey", Ty::String)
-                .children(&["Appearance", "Workspaces", "Keybind"])
+                .children(&["Appearance", "Workspaces", "Input", "Keybind"])
                 .unique_child("Appearance")
-                .unique_child("Workspaces"),
+                .unique_child("Workspaces")
+                .unique_child("Input"),
         )
         .component(
             MODULE,
@@ -42,6 +43,14 @@ pub(crate) fn contrast_schema() -> Result<Schema, Vec<String>> {
         .component(
             MODULE,
             ComponentDef::new("Workspaces").prop("count", Ty::Number),
+        )
+        .component(
+            MODULE,
+            ComponentDef::new("Input")
+                .optional_prop("tapToClick", Ty::Boolean)
+                .optional_prop("naturalScroll", Ty::Boolean)
+                .optional_prop("accelSpeed", Ty::Number)
+                .optional_prop("disableWhileTyping", Ty::Boolean),
         )
         .component(
             MODULE,

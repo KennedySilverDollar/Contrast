@@ -83,6 +83,30 @@ pub struct Appearance {
     pub background: [f32; 4],
 }
 
+/// タッチパッドなどの入力設定。libinput のデバイスに適用する（デバイスが対応しない項目は無視される）。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct InputSettings {
+    /// タップでクリックする。
+    pub tap_to_click: bool,
+    /// 自然なスクロール（指と同じ向きに動く）。
+    pub natural_scroll: bool,
+    /// ポインタの加速（-1.0〜1.0、0 が既定）。
+    pub accel_speed: f64,
+    /// タイピング中はタッチパッドを無効にする。
+    pub disable_while_typing: bool,
+}
+
+impl Default for InputSettings {
+    fn default() -> Self {
+        Self {
+            tap_to_click: true,
+            natural_scroll: false,
+            accel_speed: 0.0,
+            disable_while_typing: true,
+        }
+    }
+}
+
 /// 設定の値。
 #[derive(Debug, Clone, PartialEq)]
 pub struct Settings {
@@ -92,6 +116,8 @@ pub struct Settings {
     pub appearance: Appearance,
     /// ワークスペースの数（1〜`MAX_WORKSPACES`）。
     pub workspaces: u8,
+    /// 入力デバイスの設定。
+    pub input: InputSettings,
     /// キーバインド（並びの順）。
     pub keybinds: Vec<KeyBinding>,
 }
@@ -137,6 +163,7 @@ impl Settings {
                 background: rgba8([0x1f, 0x24, 0x33, 0xff]),
             },
             workspaces: 4,
+            input: InputSettings::default(),
             keybinds,
         }
     }

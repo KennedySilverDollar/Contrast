@@ -85,6 +85,11 @@ pub trait Policy {
     /// ワークスペースの数（1 以上）。
     fn workspace_count(&self) -> u8;
 
+    /// 入力デバイス（タッチパッドなど）の設定。
+    fn input_settings(&self) -> crate::InputSettings {
+        crate::InputSettings::default()
+    }
+
     /// 作業領域 `area` に `count` 個の窓を並べた矩形を、並び順に返す。
     ///
     /// 戻り値の長さは `count` と等しくなければならない。

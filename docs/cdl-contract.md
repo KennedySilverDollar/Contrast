@@ -10,12 +10,15 @@ CDL 側の仕様は CDL リポジトリの `docs/SPEC.md`（6・8・9 章）と 
 
 | 要素 | props | 子 | 一意 |
 | --- | --- | --- | --- |
-| `Contrast` | `modKey?: "alt" \| "super"`（省略時は下記の優先順位で決まる） | `Appearance` \| `Workspaces` \| `Keybind` | `Appearance`、`Workspaces` |
+| `Contrast` | `modKey?: "alt" \| "super"`（省略時は下記の優先順位で決まる） | `Appearance` \| `Workspaces` \| `Input` \| `Keybind` | `Appearance`、`Workspaces`、`Input` |
 | `Appearance` | `borderWidth: Length`、`focusColor: Color`、`borderColor?: Color`、`background?: Color` | なし | — |
 | `Workspaces` | `count: number`（整数、1〜32） | なし | — |
+| `Input` | `tapToClick?: boolean`（既定 true）、`naturalScroll?: boolean`（既定 false）、`accelSpeed?: number`（-1〜1、既定 0）、`disableWhileTyping?: boolean`（既定 true） | なし | — |
 | `Keybind` | `keys: string`、`action: string`、`command?: string`、`workspace?: number` | なし | — |
 
-- `Appearance` と `Workspaces` を省略したときは `Settings::builtin()` の値を使う。
+- `Input` はタッチパッドの設定。libinput のデバイスが追加されたとき（起動時の既存デバイスを含む）とリロードのときに、タッチパッドに適用する。
+  デバイスが対応しない項目はログに出して無視する。`accelSpeed` が -1〜1 の外（または非数）なら CT003。
+- `Appearance`、`Workspaces`、`Input` を省略したときは `Settings::builtin()` の値を使う。
 - `modKey` と `action` は本来リテラルユニオン（`"alt" | "super"` など）だが、`cdl-host` は `Literal` を公開していないので
   スキーマ上は `string` にして、Contrast の変換で検査する（誤りは CT003 / CT020）。
 - `borderWidth` は 0 以上の整数（px。負・非整数は CT003）。`focusColor` はフォーカス窓の枠、`borderColor` は省略時は描かないフォーカス外の窓の枠、`background` は背景色（省略時は組み込みの色）。

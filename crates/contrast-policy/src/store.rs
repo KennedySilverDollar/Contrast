@@ -222,6 +222,10 @@ pub fn load_or_builtin(
 }
 
 impl Policy for ConfigStore {
+    fn input_settings(&self) -> crate::InputSettings {
+        self.config().settings.input
+    }
+
     fn background(&self) -> [f32; 4] {
         self.config().settings.appearance.background
     }
