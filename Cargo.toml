@@ -9,6 +9,7 @@ edition = "2024"
 members = [
     "crates/contrast-core",
     "crates/contrast-policy",
+    "crates/contrast-policy-cdl",
     "crates/contrast-compositor",
     "crates/contrast",
 ]

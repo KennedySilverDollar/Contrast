@@ -36,12 +36,12 @@ impl ModKey {
     }
 }
 
-/// キーの指定: 修飾キーの集合とキー名（xkb のキー名）。
+/// キーの指定: 修飾キーの集合とキー名（xkb のキー名を小文字にしたもの）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KeySpec {
     /// 修飾キー。押されている修飾キーとちょうど一致したときだけ当たる。
     pub mods: Mods,
-    /// キー名。比較は大文字小文字を区別しない。
+    /// キー名（小文字。比較は大文字小文字を区別しない）。
     pub keysym: String,
 }
 
@@ -110,10 +110,10 @@ impl Settings {
             action,
         };
         let mut keybinds = vec![
-            bind(alt, "Return", Action::Spawn(terminal.into())),
+            bind(alt, "return", Action::Spawn(terminal.into())),
             bind(alt, "q", Action::CloseFocused),
-            bind(alt, "Left", Action::FocusPrev),
-            bind(alt, "Right", Action::FocusNext),
+            bind(alt, "left", Action::FocusPrev),
+            bind(alt, "right", Action::FocusNext),
         ];
         for (key, index) in [("1", 0u8), ("2", 1), ("3", 2), ("4", 3)] {
             keybinds.push(bind(alt, key, Action::SwitchWorkspace(index)));
