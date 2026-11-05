@@ -150,3 +150,21 @@ impl<P: Policy, L: Layout> Core<P, L> {
         crate::invariant::StateSnapshot::new(self.state.clone())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::id::{IdKind, WindowId};
+    use crate::invariant::InvariantViolation;
+    use crate::layout::Columns;
+    use crate::policy::DefaultPolicy;
+
+    #[test]
+    fn check_invariants_reports_a_broken_state() {
+        let mut core = Core::new(CoreConfig::new(2), DefaultPolicy::new(), Columns::new());
+        assert_eq!(core.check_invariants(), Ok(()));
+        let ghost = WindowId::from_raw(99);
+        core.state.focus = Some(ghost);
+        assert_eq!(core.check_invariants(), Err(InvariantViolation::I4(ghost)));
+    }
+}

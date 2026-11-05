@@ -72,3 +72,17 @@ impl Output {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::OutputName;
+
+    #[test]
+    fn output_name_returns_what_it_was_given() {
+        assert_eq!(OutputName::new("DP-1").as_str(), "DP-1");
+        assert_eq!(
+            OutputName::new(alloc::string::String::from("winit")).as_str(),
+            "winit"
+        );
+    }
+}

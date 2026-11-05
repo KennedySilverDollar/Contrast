@@ -91,3 +91,51 @@ const fn is_toward(from: Point, to: Point, direction: Direction) -> bool {
 fn manhattan(a: Point, b: Point) -> u64 {
     u64::from(a.x.abs_diff(b.x)).saturating_add(u64::from(a.y.abs_diff(b.y)))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn is_toward_is_strict_in_each_direction() {
+        let from = Point::new(10, 10);
+        let cases = [
+            (
+                Direction::Left,
+                Point::new(9, 10),
+                Point::new(10, 10),
+                Point::new(11, 10),
+            ),
+            (
+                Direction::Right,
+                Point::new(11, 10),
+                Point::new(10, 10),
+                Point::new(9, 10),
+            ),
+            (
+                Direction::Up,
+                Point::new(10, 9),
+                Point::new(10, 10),
+                Point::new(10, 11),
+            ),
+            (
+                Direction::Down,
+                Point::new(10, 11),
+                Point::new(10, 10),
+                Point::new(10, 9),
+            ),
+        ];
+        for (direction, toward, same, away) in cases {
+            assert!(is_toward(from, toward, direction), "{direction:?}");
+            assert!(!is_toward(from, same, direction), "{direction:?}");
+            assert!(!is_toward(from, away, direction), "{direction:?}");
+        }
+    }
+
+    #[test]
+    fn other_axis_does_not_count() {
+        let from = Point::new(10, 10);
+        assert!(!is_toward(from, Point::new(0, 11), Direction::Right));
+        assert!(!is_toward(from, Point::new(11, 0), Direction::Down));
+    }
+}

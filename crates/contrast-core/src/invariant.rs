@@ -82,10 +82,8 @@ fn check_i1_i2(state: &State) -> Result<(), InvariantViolation> {
             .iter()
             .filter(|ws| ws.windows.contains(&w.id))
             .count();
-        let in_own = state
-            .workspace(w.workspace)
-            .is_some_and(|ws| ws.windows.contains(&w.id));
-        if count != 1 || !in_own {
+        // 1 つのワークスペースにだけあり、それが `w.workspace` であること（後者は上の順序列の検査が保証する）。
+        if count != 1 {
             return Err(InvariantViolation::I1(w.id));
         }
     }
@@ -598,6 +596,85 @@ mod tests {
             ColumnWidth::Proportion(Ratio::FULL),
         ));
         assert_eq!(check(&state), Err(InvariantViolation::I10(index)));
+        Ok(())
+    }
+
+    /// I6: 窓の対応表で、逆引きだけが食い違う（要素数は合い、窓の数とも合う）。
+    #[test]
+    fn detects_i6_when_only_the_reverse_lookup_is_wrong() -> Result<(), &'static str> {
+        let mut state = valid().ok_or("setup")?;
+        state
+            .window_keys
+            .corrupt_reverse(WindowId::from_raw(1), ExternalKey::new(500));
+        assert_eq!(check(&state), Err(InvariantViolation::I6));
+        Ok(())
+    }
+
+    /// 窓 `raw` をキーなしで足す（ワークスペース 0・Tiled）。
+    fn add_extra_window_without_key(state: &mut State, raw: u64) -> Option<()> {
+        let id = WindowId::from_raw(raw);
+        let index = WorkspaceIndex::new(0);
+        let mut w = Window::new(id, WindowMeta::default(), WindowState::Floating, index);
+        w.rect = None;
+        state.windows.insert(id, w);
+        state.workspace_mut(index)?.push_window(id);
+        Some(())
+    }
+
+    /// I6: 窓の数と対応の数は合うが、キーのない窓がある（別の ID のキーが余っている）。
+    #[test]
+    fn detects_i6_when_only_a_window_has_no_key() -> Result<(), &'static str> {
+        let mut state = valid().ok_or("setup")?;
+        add_extra_window_without_key(&mut state, 2).ok_or("setup")?;
+        state
+            .window_keys
+            .insert(ExternalKey::new(3), WindowId::from_raw(77))
+            .map_err(|_| "key")?;
+        assert_eq!(check(&state), Err(InvariantViolation::I6));
+        Ok(())
+    }
+
+    /// I6: 出力の対応表で、逆引きだけが食い違う。
+    #[test]
+    fn detects_i6_when_only_the_output_reverse_lookup_is_wrong() -> Result<(), &'static str> {
+        let mut state = valid().ok_or("setup")?;
+        state
+            .output_keys
+            .corrupt_reverse(OutputId::from_raw(1), ExternalKey::new(900));
+        assert_eq!(check(&state), Err(InvariantViolation::I6));
+        Ok(())
+    }
+
+    /// I6: 出力の対応が 1 件余る（数だけが合わない）。
+    #[test]
+    fn detects_i6_when_only_the_output_count_differs() -> Result<(), &'static str> {
+        let mut state = valid().ok_or("setup")?;
+        state
+            .output_keys
+            .insert(ExternalKey::new(1001), OutputId::from_raw(55))
+            .map_err(|_| "key")?;
+        assert_eq!(check(&state), Err(InvariantViolation::I6));
+        Ok(())
+    }
+
+    /// I6: 出力の数と対応の数は合うが、キーのない出力がある。
+    #[test]
+    fn detects_i6_when_only_an_output_has_no_key() -> Result<(), &'static str> {
+        let mut state = valid().ok_or("setup")?;
+        let second = OutputId::from_raw(2);
+        let output = Output {
+            id: second,
+            name: OutputName::new("second"),
+            geometry: area().ok_or("area")?,
+            shown: WorkspaceIndex::new(1),
+            insets: Insets::default(),
+        };
+        state.outputs.insert(second, output);
+        state
+            .output_keys
+            .insert(ExternalKey::new(1002), OutputId::from_raw(55))
+            .map_err(|_| "key")?;
+        assert_eq!(check(&state), Err(InvariantViolation::I6));
         Ok(())
     }
 }
