@@ -30,6 +30,7 @@ impl Contrast {
                     self.store.binding_count()
                 );
                 self.reapply_layout();
+                self.reapply_input_settings();
             }
             ReloadOutcome::Absent => tracing::warn!(
                 "config: reload failed: {} not found, keeping generation={generation}",

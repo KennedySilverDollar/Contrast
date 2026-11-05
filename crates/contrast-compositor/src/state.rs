@@ -90,6 +90,8 @@ pub struct Contrast {
     pub dmabuf_importer: Option<DmabufImporter>,
     /// VT を切り替える関数（DRM バックエンドだけが入れる）。キーボードをコンポジタが持つので、これが無いと VT を移れない。
     pub vt_switch: Option<Box<dyn FnMut(i32)>>,
+    /// libinput のデバイス（設定のリロードで再適用するために覚える。DRM バックエンドだけが入れる）。
+    pub input_devices: Vec<smithay::reexports::input::Device>,
     /// キー処理の中で見つかった VT 切り替えの要求（キー処理が終わってから実行する）。
     pub pending_vt: Option<i32>,
 }
@@ -156,6 +158,7 @@ impl Contrast {
             dmabuf_importer: None,
             vt_switch: None,
             pending_vt: None,
+            input_devices: Vec::new(),
         }
     }
 

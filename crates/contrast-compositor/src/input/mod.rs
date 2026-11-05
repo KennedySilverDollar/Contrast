@@ -2,6 +2,7 @@
 
 pub mod bindings;
 pub mod debug;
+pub mod devices;
 
 use smithay::{
     backend::input::{

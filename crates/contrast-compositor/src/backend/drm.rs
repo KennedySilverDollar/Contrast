@@ -35,6 +35,7 @@ use smithay::backend::{
         output::{DrmOutput, DrmOutputManager, DrmOutputRenderElements},
     },
     egl::{EGLContext, EGLDisplay},
+    input::InputEvent,
     libinput::{LibinputInputBackend, LibinputSessionInterface},
     renderer::{
         ImportDma,
@@ -517,8 +518,10 @@ pub fn init(
             .map_err(|e| DrmError::EventLoop(e.to_string()))?;
     }
     handle
-        .insert_source(input_backend, |event, _, state| {
-            state.process_input_event(event)
+        .insert_source(input_backend, |event, _, state| match event {
+            InputEvent::DeviceAdded { device } => state.input_device_added(device),
+            InputEvent::DeviceRemoved { device } => state.input_device_removed(&device),
+            event => state.process_input_event(event),
         })
         .map_err(|e| DrmError::EventLoop(e.to_string()))?;
     let signals = Signals::new(&[Signal::SIGINT, Signal::SIGTERM])
