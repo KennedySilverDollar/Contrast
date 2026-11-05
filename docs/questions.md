@@ -25,7 +25,7 @@ Claude Code はここに追記する。人間が回答したら「回答:」行�
   - B: `scripts/verify.sh` で clippy を 2 回に分け、`--test spec` だけ `-A clippy::expect_used` を付ける。
     fmt の差分は verify.sh 側では除外できない（stable の rustfmt に除外指定が無い）ので、A の fmt は結局必要。
 - 止めた作業: なし（仕様ファイルは変更していない）
-- 回答: （人間が記入）
+- 回答: tests/spec/main.rs の #![allow] で解消。
 
 ### Q2 (p1) domain/geometry.rs が crate::error を use するのは規則 6 に反するか
 - 該当箇所: `CLAUDE.md` 規則 6、`docs/core-spec.md` 9 節、`prompts/p1.md` 手順 3・4、`src/domain/geometry.rs` 9 行
@@ -36,7 +36,7 @@ Claude Code はここに追記する。人間が回答したら「回答:」行�
   - A: error.rs を層ではなく共有の型置き場とみなし、CLAUDE.md 規則 6 に「error は除く」と足す（現状のコードのまま）。
   - B: `LayoutError` を domain 側（例: domain/geometry.rs）に移し、error.rs から再エクスポートする。公開パスは変わらない。
 - 止めた作業: なし（P1 は済んでいる。P2 の CoreError が LayoutError を包むので、P2 の前に決めたい）
-- 回答: （人間が記入）
+- 回答: D28（domain は crate::error を use してよい）。
 
 ### Q3 (p1) Point に x()・y() アクセサが無い
 - 該当箇所: `prompts/p1.md` 手順 2、`src/domain/geometry.rs` 14〜27 行
@@ -46,7 +46,7 @@ Claude Code はここに追記する。人間が回答したら「回答:」行�
   - A: `x()`・`y()` を足す（追加のみで既存 API は変わらない）。
   - B: フィールド公開のままとし、p1.md を直す。
 - 止めた作業: アクセサの追加（今回の点検は「仕様テストを通すための最小修正」に限るため）
-- 回答: （人間が記入）
+- 回答: D28（Point は公開フィールドと new だけ。x()・y() は作らない）。
 
 ### Q4 (p0) クレート名と配置が core-spec 2 節と食い違う
 - 該当箇所: `docs/core-spec.md` 1 節・2 節、`crates/`
@@ -59,7 +59,7 @@ Claude Code はここに追記する。人間が回答したら「回答:」行�
   - B: ディレクトリ側を core-spec の名前に合わせる（移動は人間が行う）。
   - いずれでも、ルートの `contrast-wm` パッケージを残すか（仮想 workspace にするか）も決める。
 - 止めた作業: core-spec 2 節の書き換え（意味に関わるため）
-- 回答: （人間が記入）
+- 回答: core-spec 2 節の更新は別途。
 
 ### Q5 (p2) tests/spec/ が clippy を通らず、verify.sh（--full なし）を緑にできない
 - 該当箇所: `crates/contrast-core/tests/spec/main.rs`、`tests/spec/spec_id.rs` 16・174〜181 行、`tests/spec/spec_geometry.rs` 5 行
@@ -76,7 +76,7 @@ Claude Code はここに追記する。人間が回答したら「回答:」行�
   - B: 仕様テスト側を lint に合わせて書き換える（`forward` を `checked_add` で増やす、`ids[0]` を `ids.first()` などに置き換える）。
   - C: verify.sh の clippy を `--all-targets` から、`--test spec` だけ別の lint 設定で走らせる形に分ける（scripts/ は人間が変える）。
 - 止めた作業: verify.sh を緑にすること（clippy 以降のステップは個別に確認済み）
-- 回答: （人間が記入）
+- 回答: tests/spec/main.rs の #![allow] で解消。
 
 ### Q6 (proto) 公開 API に名前だけあって形が決まっていない型
 - 該当箇所: `docs/core-spec.md` 5 節（`OutputName`、`WindowState`、`StateView`、`InvariantViolation`、`StateSnapshot`、`CoreConfig`）
@@ -91,7 +91,7 @@ Claude Code はここに追記する。人間が回答したら「回答:」行�
   - `InvariantViolation { I1(WindowId), I2(WorkspaceIndex), I3(OutputId), I4(WindowId), I5(WindowId), I6 }`。
   - `StateSnapshot`: 状態の複製（中身は非公開、`PartialEq + Debug`）。
 - 止めた作業: なし
-- 回答: （人間が記入）
+- 回答: D28（公開 API は現状の形で確定）。
 
 ### Q7 (proto) 表示に戻ったワークスペースの窓に Configure を出すか
 - 該当箇所: `docs/core-spec.md` 5 節「Configure は表示中ワークスペースにあり、矩形か状態が変わった窓にだけ出す」
@@ -101,7 +101,7 @@ Claude Code はここに追記する。人間が回答したら「回答:」行�
   `StateView::visible_windows()` を読んで描画する窓を合わせ直す。
 - 候補: A（現状）文言どおり。B ShowWorkspace の対象ワークスペースの全窓に Configure を出す。
 - 止めた作業: なし
-- 回答: （人間が記入）
+- 回答: D19（変化がなければ Configure は出さない。シェルが窓の最後の設定を保持する）。
 
 ### Q8 (proto) フォーカス窓が WindowUnmapped されたときのフォーカス移動先
 - 該当箇所: `docs/core-spec.md` 7 節（D3・D13 は出力削除と MoveToWorkspace だけを決めている）
@@ -110,7 +110,7 @@ Claude Code はここに追記する。人間が回答したら「回答:」行�
   末尾だったなら新しい末尾（左隣）」。ワークスペースが表示中でなければ None。
 - 候補: A（現状）隣。B D3 と同じく順序列先頭。C フォーカス履歴の最新（D12 と同じ）。
 - 止めた作業: なし
-- 回答: （人間が記入）
+- 回答: D18（右隣、末尾なら左隣、なければ None）。
 
 ### Q9 (proto) Tiled 窓が作業領域の幅より多いとき
 - 該当箇所: `docs/core-spec.md` 6 節（`Layout(LayoutError)`）、`Rect::split_columns`
@@ -119,7 +119,7 @@ Claude Code はここに追記する。人間が回答したら「回答:」行�
 - 暫定: 仕様どおり Err。シェルはログを出し、その窓を管理しない（実用上 928px に 929 枚は来ない）。
 - 候補: A（現状）。B Layout が重ねて返す（I5 に反する）。C 入りきらない窓を Floating にする。
 - 止めた作業: なし
-- 回答: （人間が記入）
+- 回答: D17（Layout(AreaTooSmall)。Err のとき状態は変わらない。シェルはログを出して続行）。
 
 ### Q10 (proto) D8 の「最低 1px 交差するよう切り詰める」の解釈と、OutputAdded 時のフォーカス
 - 該当箇所: `docs/core-spec.md` D8、D2
@@ -128,7 +128,7 @@ Claude Code はここに追記する。人間が回答したら「回答:」行�
 - 暫定: (a) 幅・高さを作業領域に合わせて縮め、中央に置く（必ず作業領域内）。前回の浮動矩形が作業領域と
   交差していればそのまま保つ。(b) 与えない（フォーカスは None のまま）。
 - 止めた作業: なし
-- 回答: （人間が記入）
+- 回答: D20・D21（浮動矩形の扱いは D20、OutputAdded はフォーカスを与えない D21）。
 
 ### Q11 (proto) Fullscreen の窓に ToggleFloating したとき、などの Action の端の扱い
 - 該当箇所: `docs/core-spec.md` 5 節 Action、D9・D11〜D13
@@ -141,7 +141,7 @@ Claude Code はここに追記する。人間が回答したら「回答:」行�
   - FocusDirection / MoveWindow / MoveToWorkspace / Toggle* / CloseFocused はフォーカスが None なら
     `NoFocusedWindow`（6 節）。シェルはログだけ出す。プロトタイプの「何もしない」と見た目は同じ。
 - 止めた作業: なし
-- 回答: （人間が記入）
+- 回答: D22（端の扱いは状態不変で Ok）。
 
 ### Q12 (proto) 仕様 5 節への Command::WindowFocusRequested の追記（追記できず保留）
 - 該当箇所: `docs/core-spec.md` 5 節
@@ -154,4 +154,4 @@ Claude Code はここに追記する。人間が回答したら「回答:」行�
     あるときだけフォーカスを移し、フォーカス履歴を更新する。表示されていなければ状態不変で `Ok`（Effect 空）。
     key が未登録なら `UnknownKey`。」
 - 止めた作業: core-spec.md の編集のみ（実装とテストは済み）
-- 回答: （人間が記入）
+- 回答: D16（core-spec に反映済み）。
