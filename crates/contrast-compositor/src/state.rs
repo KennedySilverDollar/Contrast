@@ -23,7 +23,9 @@ use smithay::{
     },
 };
 
-use contrast_policy::{Policy, PortPlacement};
+use contrast_policy::{ConfigLoader, ConfigStore, Policy, PortPlacement};
+
+use crate::ConfigSource;
 
 use crate::shell::{ContrastCore, Shell};
 
@@ -42,12 +44,18 @@ pub struct Contrast {
     /// 配置・キーバインドの問い合わせ先。
     /// core の配置判断（`PortPlacement`）とも共有する。
     pub policy: Rc<dyn Policy>,
+    /// 現在の設定（`policy` の実体）。リロードで差し替える。
+    pub store: Rc<ConfigStore>,
+    /// リロードで設定を読み直す読み込み器。
+    pub config_loader: Box<dyn ConfigLoader>,
+    /// 設定ファイルのパス。
+    pub config_path: Option<std::path::PathBuf>,
     /// 配置・フォーカスを決める状態遷移エンジン。
     pub core: ContrastCore,
     /// core の ExternalKey とシェル側の窓・出力の対応。
     pub shell: Shell,
-    /// フォーカス枠の四辺（上・下・左・右）。Id を保って描画の差分追跡を効かせる。
-    pub border_buffers: [SolidColorBuffer; 4],
+    /// 枠の帯のバッファ（帯 1 本に 1 つ。フォーカス窓の 4 本、続けてフォーカス外の窓の分）。Id を保って描画の差分追跡を効かせる。
+    pub border_buffers: Vec<SolidColorBuffer>,
     /// キーバインドとして握りつぶした押下中のキー（離したときも素通ししない）。
     pub suppressed_keys: Vec<Keycode>,
 
@@ -67,8 +75,10 @@ impl Contrast {
     pub fn new(
         event_loop: &mut EventLoop<Self>,
         display: Display<Self>,
-        policy: Rc<dyn Policy>,
+        store: Rc<ConfigStore>,
+        source: ConfigSource,
     ) -> Self {
+        let policy: Rc<dyn Policy> = store.clone();
         let dh = display.handle();
 
         let compositor_state = CompositorState::new::<Self>(&dh);
@@ -97,6 +107,9 @@ impl Contrast {
             space: Space::default(),
             loop_signal: event_loop.get_signal(),
             policy,
+            store,
+            config_loader: source.loader,
+            config_path: source.path,
             core,
             shell: Shell::default(),
             border_buffers: Default::default(),

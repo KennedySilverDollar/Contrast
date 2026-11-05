@@ -73,7 +73,7 @@ CDL（`windowOpen` の引数と戻り値）では 1 始まり。`contrast-policy
 ### CD2' 依存の仕方（CD2 を置き換え）
 - git 依存で `rev = bcff355ff88ecb91013becf212c1617d3db13fec`（`origin/main` の HEAD。`git ls-remote` で確認済み）。
 - 手元の `~/RustroverProjects/cdl` への差し替えは、リポジトリに入れない `.cargo/config.toml` の `[patch]`（`.gitignore` 済み）。
-  パッチ中は `Cargo.lock` の cdl-* が path 扱いに変わるので、そのロックはコミットしない。
+  パッチを有効にすると `Cargo.lock` の cdl-* が path 扱いに変わることがあるので、そのロックはコミットしない（既定は無効）。
 
 ### CD3' スキーマ（CD3 を置き換え）
 参照ホスト `host:contrast` とは別物にした（`cdl check --preset contrast` では検査できない）。

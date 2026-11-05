@@ -17,28 +17,41 @@ impl Contrast {
                 tracing::info!("quit requested");
                 return self.loop_signal.stop();
             }
+            Action::ReloadConfig => return self.reload_config(),
             Action::CloseFocused => contrast_core::Action::CloseFocused,
             Action::FocusPrev => contrast_core::Action::FocusDirection(Direction::Left),
             Action::FocusNext => contrast_core::Action::FocusDirection(Direction::Right),
+            Action::MoveLeft => contrast_core::Action::MoveWindow(Direction::Left),
+            Action::MoveRight => contrast_core::Action::MoveWindow(Direction::Right),
+            Action::ToggleFloating => contrast_core::Action::ToggleFloating,
+            Action::ToggleFullscreen => contrast_core::Action::ToggleFullscreen,
             Action::SwitchWorkspace(n) => {
                 contrast_core::Action::SwitchWorkspace(WorkspaceIndex::new(n))
+            }
+            Action::MoveToWorkspace(n) => {
+                contrast_core::Action::MoveToWorkspace(WorkspaceIndex::new(n))
             }
         };
         self.core_action(core_action);
     }
 
-    /// `program` をこのコンポジタのソケットにつないで起動する。
-    fn spawn(&self, program: &str) {
+    /// `command`（空白で区切った先頭がプログラム、残りが引数）をこのコンポジタのソケットにつないで起動する。
+    fn spawn(&self, command: &str) {
+        let mut words = command.split_whitespace();
+        let Some(program) = words.next() else {
+            return;
+        };
         match std::process::Command::new(program)
+            .args(words)
             .env("WAYLAND_DISPLAY", &self.socket_name)
             .spawn()
         {
             Ok(mut child) => {
-                tracing::info!(program, pid = child.id(), "spawned");
+                tracing::info!(command, pid = child.id(), "spawned");
                 // ゾンビを残さないよう、別スレッドで終了を待つ。
                 std::thread::spawn(move || child.wait());
             }
-            Err(err) => tracing::warn!(program, %err, "spawn failed"),
+            Err(err) => tracing::warn!(command, %err, "spawn failed"),
         }
     }
 }

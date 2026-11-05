@@ -9,6 +9,8 @@ description = "Contrast の Smithay シェル（nested プロトタイプ: winit
 contrast-core = { path = "../contrast-core" }
 contrast-policy = { path = "../contrast-policy" }
 tracing = "=0.1.44"
+# SIGUSR1 でリロードするための signal source。smithay が使う calloop と同じ版の `signals` 機能だけを足す。
+calloop = { version = "=0.14.5", default-features = false, features = ["signals"] }
 
 [dependencies.smithay]
 version = "=0.7.0"

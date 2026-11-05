@@ -122,6 +122,32 @@ impl Contrast {
         w.rect
     }
 
+    /// フォーカス外の表示中の窓のタイル（全画面は除く）。フォーカス外の枠を描くのに使う。
+    pub fn unfocused_tiles(&self) -> Vec<Rect> {
+        let view = self.core.view();
+        let focus = view.focus();
+        view.visible_windows()
+            .iter()
+            .filter(|w| Some(w.id) != focus && w.state != WindowState::Fullscreen)
+            .filter_map(|w| w.rect)
+            .collect()
+    }
+
+    /// 表示中の窓の配置をポリシーの今の値（枠の太さなど）で取り直す。設定のリロードのあとに呼ぶ。
+    pub fn reapply_layout(&mut self) {
+        let placed: Vec<(WindowId, Rect, WindowState)> = self
+            .core
+            .view()
+            .visible_windows()
+            .iter()
+            .filter_map(|w| w.rect.map(|r| (w.id, r, w.state)))
+            .collect();
+        for (id, rect, state) in placed {
+            self.configure(id, rect, state);
+        }
+        self.sync_space();
+    }
+
     /// 表示中で、タイル（枠を含む）が点 `(x, y)` を含む窓の ExternalKey。上に描かれている窓を優先する。
     pub fn visible_key_at(&self, x: i32, y: i32) -> Option<ExternalKey> {
         let p = Point::new(x, y);

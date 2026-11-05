@@ -6,20 +6,40 @@
 mod backend;
 mod handler;
 mod input;
+mod reload;
 mod render;
 mod shell;
 mod state;
 
+use std::path::PathBuf;
+use std::rc::Rc;
+
+use calloop::signals::{Signal, Signals};
 use smithay::reexports::{calloop::EventLoop, wayland_server::Display};
 
-use contrast_policy::Policy;
+use contrast_policy::{ConfigLoader, ConfigStore};
 pub use state::Contrast;
 
-/// コンポジタを起動し、終了まで戻らない。
-pub fn run(policy: Box<dyn Policy>) -> Result<(), Box<dyn std::error::Error>> {
+/// 設定の再読み込みに使う読み込み器と設定ファイルのパス。
+pub struct ConfigSource {
+    /// 設定ファイルを読む読み込み器。
+    pub loader: Box<dyn ConfigLoader>,
+    /// 設定ファイルのパス。決められなかったときは `None`（リロードは何もしない）。
+    pub path: Option<PathBuf>,
+}
+
+/// コンポジタを起動し、終了まで戻らない。`store` が配置・キーバインド・見た目の問い合わせ先。
+///
+/// SIGUSR1 と `reload-config` アクションで、`source` から設定を読み直して `store` を差し替える。
+pub fn run(store: Rc<ConfigStore>, source: ConfigSource) -> Result<(), Box<dyn std::error::Error>> {
     let mut event_loop: EventLoop<Contrast> = EventLoop::try_new()?;
+    // SIGUSR1 はスレッドを作る前にブロックして calloop で受ける（既定の動作は終了）。
+    let signals = Signals::new(&[Signal::SIGUSR1])?;
+    event_loop
+        .handle()
+        .insert_source(signals, |_, _, state| state.reload_config())?;
     let display: Display<Contrast> = Display::new()?;
-    let mut state = Contrast::new(&mut event_loop, display, std::rc::Rc::from(policy));
+    let mut state = Contrast::new(&mut event_loop, display, store, source);
 
     backend::winit::init_winit(&mut event_loop, &mut state)?;
     input::debug::init(&mut event_loop);
