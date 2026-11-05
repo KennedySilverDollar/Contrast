@@ -35,11 +35,11 @@ pub fn handle(state: &mut State) -> Result<Vec<Effect>, CoreError> {
             Some(c.windows.remove(0))
         }
     });
-    if let Some(id) = taken {
-        if let Some(c) = w.columns.get_mut(col) {
-            c.windows.push(id);
-        }
-        // 空になった右隣は、整合（`sync`）が削除する。
+    // 空になった右隣は、整合（`sync`）が削除する。
+    if let Some(id) = taken
+        && let Some(c) = w.columns.get_mut(col)
+    {
+        c.windows.push(id);
     }
     Ok(Vec::new())
 }

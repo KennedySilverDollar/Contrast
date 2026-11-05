@@ -57,7 +57,7 @@ mod scrolling_impl {
             apply(
                 &mut c,
                 Command::WindowMapped {
-                    key: ExternalKey::new(11 + i),
+                    key: ExternalKey::new(11_u64.saturating_add(i)),
                     meta: WindowMeta::default(),
                 },
             );
