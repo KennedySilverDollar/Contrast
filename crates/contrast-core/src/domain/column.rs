@@ -82,9 +82,9 @@ impl ColumnWidth {
 
     /// 不正な `Fixed`（1 未満）を 1 に直す。
     #[must_use]
-    pub(crate) const fn sanitized(self) -> Self {
+    pub(crate) fn sanitized(self) -> Self {
         match self {
-            Self::Fixed(px) if px < 1 => Self::Fixed(1),
+            Self::Fixed(px) => Self::Fixed(px.max(1)),
             other => other,
         }
     }

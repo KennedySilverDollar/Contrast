@@ -62,14 +62,10 @@ pub fn clamp_view(view_x: i32, total: i32, area_width: i32) -> i32 {
 /// 最後に `clamp_view` で収める。
 #[must_use]
 pub fn adjust_view(view_x: i32, left: i32, width: i32, area_width: i32, total: i32) -> i32 {
+    // 右端が見えるまで動かし（`right − 作業領域の幅` 以上）、それでも左端を越えないようにする（`left` 以下）。
+    // 列が作業領域以上に広ければ `right − 作業領域の幅 >= left` なので、結果は自然に左端になる。
     let right = left.saturating_add(width);
-    let moved = if width >= area_width || left < view_x {
-        left
-    } else if right > view_x.saturating_add(area_width) {
-        right.saturating_sub(area_width)
-    } else {
-        view_x
-    };
+    let moved = view_x.max(right.saturating_sub(area_width)).min(left);
     clamp_view(moved, total, area_width)
 }
 
@@ -183,16 +179,8 @@ pub fn arrange_workspace(
     };
     let (widths, lefts, total) =
         column_layout(ws, area.width()).ok_or(CoreError::GeometryOverflow)?;
-    let focus_col = state
-        .focus
-        .filter(|f| {
-            state
-                .windows
-                .get(f)
-                .is_some_and(|w| w.workspace == index && w.state == WindowState::Tiled)
-        })
-        .and_then(|f| ws.column_of(f))
-        .map(|(c, _)| c);
+    // 列にある窓だけが列を持つので、このワークスペースの列から探せば足りる。
+    let focus_col = state.focus.and_then(|f| ws.column_of(f)).map(|(c, _)| c);
     let view = match focus_col.and_then(|c| Some((lefts.get(c)?, widths.get(c)?))) {
         Some((left, width)) => adjust_view(ws.view_x, *left, *width, area.width(), total),
         None => clamp_view(ws.view_x, total, area.width()),

@@ -25,16 +25,16 @@ pub fn handle(state: &mut State) -> Result<Vec<Effect>, CoreError> {
     let Some(w) = state.workspace_mut(ws) else {
         return Ok(Vec::new());
     };
-    let Some(next) = col.checked_add(1).filter(|n| *n < w.columns.len()) else {
-        return Ok(Vec::new());
-    };
-    let taken = w.columns.get_mut(next).and_then(|c| {
-        if c.windows.is_empty() {
-            None
-        } else {
-            Some(c.windows.remove(0))
-        }
-    });
+    let taken = col
+        .checked_add(1)
+        .and_then(|next| w.columns.get_mut(next))
+        .and_then(|c| {
+            if c.windows.is_empty() {
+                None
+            } else {
+                Some(c.windows.remove(0))
+            }
+        });
     // 空になった右隣は、整合（`sync`）が削除する。
     if let Some(id) = taken
         && let Some(c) = w.columns.get_mut(col)

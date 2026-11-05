@@ -93,9 +93,8 @@ fn move_in_columns(state: &mut State, pos: FocusPos, direction: Direction) {
             } else {
                 pos.row.checked_add(1)
             };
-            if let Some(o) = other.filter(|o| *o < column.windows.len())
-                && pos.row < column.windows.len()
-            {
+            // `pos.row` は `focus_pos` が列の中にあると確かめている。
+            if let Some(o) = other.filter(|o| *o < column.windows.len()) {
                 column.windows.swap(pos.row, o);
             }
         }

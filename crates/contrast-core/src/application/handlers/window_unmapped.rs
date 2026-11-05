@@ -9,7 +9,6 @@ use alloc::vec::Vec;
 
 use crate::application::effect::Effect;
 use crate::application::scrolling;
-use crate::domain::column::LayoutMode;
 use crate::domain::id::ExternalKey;
 use crate::domain::state::State;
 use crate::error::CoreError;
@@ -22,7 +21,8 @@ pub fn handle(state: &mut State, key: ExternalKey) -> Result<Vec<Effect>, CoreEr
     let id = state.window_keys.remove_by_key(key)?;
     let was_focused = state.focus == Some(id);
     // D41: Scrolling の列にある窓なら、削除前の列の構造から次のフォーカスを決める。
-    let from_columns = if was_focused && state.layout.mode == LayoutMode::Scrolling {
+    // `Equal` では列が空なので `None` になり、既存の規則に従う。
+    let from_columns = if was_focused {
         scrolling::focus_after_removal(state, id)
     } else {
         None
