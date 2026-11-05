@@ -231,3 +231,22 @@ crates/contrast-core/src/
 ```
 
 層の依存方向は `scripts/check-layering.sh` が CI で検査する。
+
+## 10. P3 で確定した挙動（tests/spec/spec_core_*.rs が前提にする）
+
+暫定決定 D1〜D15 を引き継ぎ、実装が決めていた点を仕様にする。違う意図があれば、この節とテストを一緒に直す。
+
+- **D16 Command**: `WindowFocusRequested(ExternalKey)` を Command に加える。表示中のワークスペースの窓ならフォーカスを移す。非表示の窓は状態不変で Ok。未登録は `UnknownKey`。
+- **D17 窓が多すぎるとき**: Tiled 窓の数が作業領域の幅（px）を超えると `Layout(AreaTooSmall)`。WindowMapped、OutputChanged（縮小）、ToggleFloating、MoveToWorkspace、SwitchWorkspace、OutputAdded のどれでも同じ。Err のとき状態は変わらない（OutputChanged が失敗したら、出力の矩形は古いまま）。シェルは Err をログに出して続行する。
+- **D18 窓の削除とフォーカス**: フォーカス窓の WindowUnmapped は、同じワークスペースの順序列で右隣へ、末尾なら左隣へ、窓がなければ None にする（Floating・Fullscreen も対象）。ほかの窓の削除でフォーカスは変わらない。
+- **D19 ワークスペースへの復帰**: 表示に戻った窓の矩形と状態が前回の Configure と同じなら、Configure は出さない（ShowWorkspace・SetFocus・Damage だけ）。シェルは、窓の最後の設定を保持する。
+- **D20 浮動矩形（D8 を改める）**: 前回の浮動矩形が作業領域と交差していればそのまま保つ。なければ `requested_size`（なければ作業領域の半分）を作業領域に収まるよう縮め、中央に置く。
+- **D21 OutputAdded**: フォーカスを与えない。
+- **D22 Action の端**: 次はすべて状態不変で Ok（Effect なし）。Fullscreen の窓への ToggleFloating、表示中のワークスペースへの SwitchWorkspace、出力 0 台での SwitchWorkspace、現在のワークスペースへの MoveToWorkspace、Floating・Fullscreen の窓への MoveWindow、端での MoveWindow、候補のない FocusDirection。MoveWindow の前後は Tiled の窓だけを数える（Left・Up が前、Right・Down が後）。MoveToWorkspace は、インデックスの範囲、次にフォーカスの有無の順に検査する。
+- **D23 WindowMetaChanged**: `meta` を差し替えるだけで、再配置・状態の変更・Effect はない。配置の判断は map のときだけ行う。
+- **D24 出力の削除**: 窓は残り、表示されていたワークスペースは未表示になる。削除された出力への ShowWorkspace・Damage は出さない。同じキーの再追加は新しい OutputId になり、最小インデックスの未表示ワークスペースを表示する。
+- **D25 FocusDirection の候補**: フォーカス窓以外の表示中の全窓（Floating・Fullscreen・他の出力の窓を含む）。フォーカス窓に矩形がなければ状態不変で Ok。
+- **D26 不変条件 I9**: 同じワークスペースの Fullscreen の窓は高々 1 枚。`check_invariants` で検査する。
+- **D27 I7・I8 の確認**: 任意の Command 列に対するプロパティテスト（`spec_core_properties.rs`）で確認する。確認項目は、毎ステップ I1〜I6 と I9、Err なら状態不変（I7）、同じ列を新しい Core に流すと結果と状態が一致（I8）、Effect の順序、Configure と SetFocus が適用後の状態と一致すること、SetFocus は変わったときだけ出ること。
+- **D28 公開 API**: `StateView`・`WindowView`・`InvariantViolation`・`StateSnapshot` は現状の形で確定する。`Point` は公開フィールドと `new` だけを持つ（`x()`・`y()` は作らない）。「公開型は `#[non_exhaustive]`」の対象は、Command・Action・Effect・Placement・WindowMeta などのデータ型で、Core・StateView・IdGen・KeyMap などの振る舞いの型は対象外。`domain` は `crate::error` を use してよい。
+- **D29 Damage（D15 の確認）**: フォーカスだけが変わったときも、その出力に Damage を出す。
