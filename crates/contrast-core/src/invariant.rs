@@ -1,7 +1,9 @@
-//! 不変条件 I1〜I6・I9 の検査（テストから呼ぶ）。I7・I8 は状態機械テストで確かめる。
+//! 不変条件 I1〜I6・I9〜I11 の検査（テストから呼ぶ）。I7・I8 は状態機械テストで確かめる。
 
 use alloc::vec::Vec;
 
+use crate::application::scrolling;
+use crate::domain::column::LayoutMode;
 use crate::domain::id::{OutputId, WindowId, WorkspaceIndex};
 use crate::domain::state::State;
 use crate::domain::window::WindowState;
@@ -24,6 +26,10 @@ pub enum InvariantViolation {
     I6,
     /// I9: 同じワークスペースに Fullscreen の窓が 2 枚以上ある。
     I9(WorkspaceIndex),
+    /// I10: `Scrolling` で、Tiled の窓がちょうど 1 つの列に属していない、空の列がある、または列の幅が 1 未満。
+    I10(WorkspaceIndex),
+    /// I11: `Scrolling` で、フォーカスが Tiled の窓にあるのに、その列が D39 の条件を満たしていない。
+    I11(WindowId),
 }
 
 /// I7 の比較用の状態の複製。
@@ -37,7 +43,7 @@ impl StateSnapshot {
     }
 }
 
-/// I1〜I6、I9 を順に検査し、最初の違反を返す。
+/// I1〜I6、I9〜I11 を順に検査し、最初の違反を返す。
 ///
 /// # Errors
 /// 違反があればその種類。
@@ -47,7 +53,9 @@ pub fn check(state: &State) -> Result<(), InvariantViolation> {
     check_i4(state)?;
     check_i5(state)?;
     check_i6(state)?;
-    check_i9(state)
+    check_i9(state)?;
+    check_i10(state)?;
+    check_i11(state)
 }
 
 /// I1・I2: 所属と順序列の整合。
@@ -125,7 +133,12 @@ fn check_i5(state: &State) -> Result<(), InvariantViolation> {
             let Some(rect) = w.rect else {
                 return Err(InvariantViolation::I5(*id));
             };
-            let inside = area.intersect(&rect) == Some(rect);
+            // Scrolling（D47）: 縦だけが作業領域に収まればよい。横はビューの外に出てよい。
+            let inside = if state.layout.mode == LayoutMode::Scrolling {
+                rect.y() >= area.y() && rect.bottom() <= area.bottom()
+            } else {
+                area.intersect(&rect) == Some(rect)
+            };
             let overlaps = placed.iter().any(|(_, r)| r.intersect(&rect).is_some());
             if !inside || overlaps {
                 return Err(InvariantViolation::I5(*id));
@@ -173,10 +186,88 @@ fn check_i9(state: &State) -> Result<(), InvariantViolation> {
     Ok(())
 }
 
-/// 壊した State が、その不変条件の variant を返すことの確認（I1〜I9）。
+/// I10: `Scrolling` では、各 Tiled の窓がちょうど 1 つの列に属し、空の列がなく、列の幅は 1 以上。
+fn check_i10(state: &State) -> Result<(), InvariantViolation> {
+    if state.layout.mode != LayoutMode::Scrolling {
+        return Ok(());
+    }
+    for ws in &state.workspaces {
+        let bad_column = ws
+            .columns
+            .iter()
+            .any(|col| col.windows.is_empty() || !column_width_ok(col.width));
+        let tiled_ok = ws.windows.iter().all(|id| {
+            let tiled = state
+                .windows
+                .get(id)
+                .is_some_and(|w| w.state == WindowState::Tiled);
+            let count = ws.columns.iter().filter(|c| c.windows.contains(id)).count();
+            if tiled { count == 1 } else { count == 0 }
+        });
+        let in_columns: usize = ws.columns.iter().map(|c| c.windows.len()).sum();
+        let tiled_total = ws
+            .windows
+            .iter()
+            .filter(|id| {
+                state
+                    .windows
+                    .get(id)
+                    .is_some_and(|w| w.state == WindowState::Tiled)
+            })
+            .count();
+        if bad_column || !tiled_ok || in_columns != tiled_total {
+            return Err(InvariantViolation::I10(ws.index));
+        }
+    }
+    Ok(())
+}
+
+/// 列の幅が 1 以上か（`Fixed` が 1 未満でない）。
+fn column_width_ok(width: crate::domain::column::ColumnWidth) -> bool {
+    !matches!(width, crate::domain::column::ColumnWidth::Fixed(px) if px < 1)
+}
+
+/// I11: `Scrolling` で、フォーカスが Tiled の窓にあるとき、その列は D39 の条件を満たす（ビューがそれ以上動かない）。
+fn check_i11(state: &State) -> Result<(), InvariantViolation> {
+    if state.layout.mode != LayoutMode::Scrolling {
+        return Ok(());
+    }
+    let Some(id) = state.focus else {
+        return Ok(());
+    };
+    let Some(w) = state.windows.get(&id) else {
+        return Ok(());
+    };
+    if w.state != WindowState::Tiled {
+        return Ok(());
+    }
+    let Some(ws) = state.workspace(w.workspace) else {
+        return Ok(());
+    };
+    let Some(area_width) = scrolling::shown_area_width(state, w.workspace) else {
+        return Ok(());
+    };
+    let layout = scrolling::column_layout(ws, area_width);
+    let ok = ws
+        .column_of(id)
+        .and_then(|(c, _)| {
+            let (widths, lefts, total) = layout.as_ref()?;
+            let (left, width) = (lefts.get(c)?, widths.get(c)?);
+            Some(scrolling::adjust_view(ws.view_x, *left, *width, area_width, *total) == ws.view_x)
+        })
+        .unwrap_or(false);
+    if ok {
+        Ok(())
+    } else {
+        Err(InvariantViolation::I11(id))
+    }
+}
+
+/// 壊した State が、その不変条件の variant を返すことの確認（I1〜I11）。
 #[cfg(test)]
 mod tests {
     use super::{InvariantViolation, check};
+    use crate::domain::column::{Column, ColumnWidth, LayoutMode, Ratio};
     use crate::domain::geometry::Rect;
     use crate::domain::id::{ExternalKey, IdKind, OutputId, WindowId, WorkspaceIndex};
     use crate::domain::insets::Insets;
@@ -334,6 +425,163 @@ mod tests {
         assert_eq!(
             check(&state),
             Err(InvariantViolation::I9(WorkspaceIndex::new(0)))
+        );
+        Ok(())
+    }
+
+    /// Scrolling の State: `valid()` を、窓 1 が幅 1/1 の 1 列に入っている状態にしたもの。
+    fn scrolling_valid() -> Option<State> {
+        let mut state = valid()?;
+        state.layout.mode = LayoutMode::Scrolling;
+        let ws = state.workspace_mut(WorkspaceIndex::new(0))?;
+        ws.columns.push(Column::single(
+            WindowId::from_raw(1),
+            ColumnWidth::Proportion(Ratio::FULL),
+        ));
+        Some(state)
+    }
+
+    /// Scrolling の健全な State は検査を通る。
+    #[test]
+    fn valid_scrolling_state_passes() -> Result<(), &'static str> {
+        let state = scrolling_valid().ok_or("setup")?;
+        assert_eq!(check(&state), Ok(()));
+        Ok(())
+    }
+
+    /// I5（Scrolling）: 横にビューの外へ出ていてもよい。
+    #[test]
+    fn scrolling_allows_rects_outside_the_view_horizontally() -> Result<(), &'static str> {
+        let mut state = scrolling_valid().ok_or("setup")?;
+        state
+            .windows
+            .get_mut(&WindowId::from_raw(1))
+            .ok_or("window")?
+            .rect = Rect::new(-50, 0, 100, 100);
+        assert_eq!(check(&state), Ok(()));
+        Ok(())
+    }
+
+    /// I5（Scrolling）: 縦が作業領域からはみ出す。
+    #[test]
+    fn detects_i5_scrolling_vertical_overflow() -> Result<(), &'static str> {
+        let mut state = scrolling_valid().ok_or("setup")?;
+        let id = WindowId::from_raw(1);
+        state.windows.get_mut(&id).ok_or("window")?.rect = Rect::new(0, 10, 100, 100);
+        assert_eq!(check(&state), Err(InvariantViolation::I5(id)));
+        Ok(())
+    }
+
+    /// I5（Scrolling）: Tiled の窓が重なる。
+    #[test]
+    fn detects_i5_scrolling_overlap() -> Result<(), &'static str> {
+        let mut state = scrolling_valid().ok_or("setup")?;
+        add_window(&mut state, 2, WindowState::Tiled).ok_or("setup")?;
+        state
+            .workspace_mut(WorkspaceIndex::new(0))
+            .ok_or("ws")?
+            .columns
+            .push(Column::single(
+                WindowId::from_raw(2),
+                ColumnWidth::Proportion(Ratio::FULL),
+            ));
+        assert_eq!(
+            check(&state),
+            Err(InvariantViolation::I5(WindowId::from_raw(2)))
+        );
+        Ok(())
+    }
+
+    /// I10: Tiled の窓がどの列にもない。
+    #[test]
+    fn detects_i10_when_a_tiled_window_has_no_column() -> Result<(), &'static str> {
+        let mut state = scrolling_valid().ok_or("setup")?;
+        let index = WorkspaceIndex::new(0);
+        state.workspace_mut(index).ok_or("ws")?.columns.clear();
+        assert_eq!(check(&state), Err(InvariantViolation::I10(index)));
+        Ok(())
+    }
+
+    /// I10: 窓が 2 つの列にある。
+    #[test]
+    fn detects_i10_when_a_window_is_in_two_columns() -> Result<(), &'static str> {
+        let mut state = scrolling_valid().ok_or("setup")?;
+        let index = WorkspaceIndex::new(0);
+        state
+            .workspace_mut(index)
+            .ok_or("ws")?
+            .columns
+            .push(Column::single(
+                WindowId::from_raw(1),
+                ColumnWidth::Proportion(Ratio::FULL),
+            ));
+        assert_eq!(check(&state), Err(InvariantViolation::I10(index)));
+        Ok(())
+    }
+
+    /// I10: 空の列がある。
+    #[test]
+    fn detects_i10_when_a_column_is_empty() -> Result<(), &'static str> {
+        let mut state = scrolling_valid().ok_or("setup")?;
+        let index = WorkspaceIndex::new(0);
+        let ws = state.workspace_mut(index).ok_or("ws")?;
+        ws.columns.push(Column {
+            windows: alloc::vec::Vec::new(),
+            width: ColumnWidth::Proportion(Ratio::FULL),
+            last_focused: None,
+            restore_width: None,
+        });
+        assert_eq!(check(&state), Err(InvariantViolation::I10(index)));
+        Ok(())
+    }
+
+    /// I10: 列の幅が 1 未満。
+    #[test]
+    fn detects_i10_when_a_column_width_is_below_one() -> Result<(), &'static str> {
+        let mut state = scrolling_valid().ok_or("setup")?;
+        let index = WorkspaceIndex::new(0);
+        let ws = state.workspace_mut(index).ok_or("ws")?;
+        ws.columns.first_mut().ok_or("column")?.width = ColumnWidth::Fixed(0);
+        assert_eq!(check(&state), Err(InvariantViolation::I10(index)));
+        Ok(())
+    }
+
+    /// I10: Floating の窓が列にいる。
+    #[test]
+    fn detects_i10_when_a_floating_window_is_in_a_column() -> Result<(), &'static str> {
+        let mut state = scrolling_valid().ok_or("setup")?;
+        let index = WorkspaceIndex::new(0);
+        add_window(&mut state, 2, WindowState::Floating).ok_or("setup")?;
+        let ws = state.workspace_mut(index).ok_or("ws")?;
+        ws.columns
+            .first_mut()
+            .ok_or("column")?
+            .windows
+            .push(WindowId::from_raw(2));
+        assert_eq!(check(&state), Err(InvariantViolation::I10(index)));
+        Ok(())
+    }
+
+    /// I10 は Equal では検査しない（列は空のまま）。
+    #[test]
+    fn i10_is_ignored_in_equal_mode() -> Result<(), &'static str> {
+        let state = valid().ok_or("setup")?;
+        assert!(state.workspaces.iter().all(|ws| ws.columns.is_empty()));
+        assert_eq!(check(&state), Ok(()));
+        Ok(())
+    }
+
+    /// I11: フォーカス列が見える位置にビューがない。
+    #[test]
+    fn detects_i11_when_the_view_is_out_of_range() -> Result<(), &'static str> {
+        let mut state = scrolling_valid().ok_or("setup")?;
+        state
+            .workspace_mut(WorkspaceIndex::new(0))
+            .ok_or("ws")?
+            .view_x = 50;
+        assert_eq!(
+            check(&state),
+            Err(InvariantViolation::I11(WindowId::from_raw(1)))
         );
         Ok(())
     }
