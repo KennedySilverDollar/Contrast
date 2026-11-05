@@ -35,3 +35,5 @@ fn core_specs_need_the_invariants_feature() {
         "core の仕様テストは --all-features（または --features invariants）で実行する"
     );
 }
+#[cfg(feature = "invariants")]
+mod spec_core_insets;

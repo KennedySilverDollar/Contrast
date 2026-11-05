@@ -250,3 +250,13 @@ crates/contrast-core/src/
 - **D27 I7・I8 の確認**: 任意の Command 列に対するプロパティテスト（`spec_core_properties.rs`）で確認する。確認項目は、毎ステップ I1〜I6 と I9、Err なら状態不変（I7）、同じ列を新しい Core に流すと結果と状態が一致（I8）、Effect の順序、Configure と SetFocus が適用後の状態と一致すること、SetFocus は変わったときだけ出ること。
 - **D28 公開 API**: `StateView`・`WindowView`・`InvariantViolation`・`StateSnapshot` は現状の形で確定する。`Point` は公開フィールドと `new` だけを持つ（`x()`・`y()` は作らない）。「公開型は `#[non_exhaustive]`」の対象は、Command・Action・Effect・Placement・WindowMeta などのデータ型で、Core・StateView・IdGen・KeyMap などの振る舞いの型は対象外。`domain` は `crate::error` を use してよい。
 - **D29 Damage（D15 の確認）**: フォーカスだけが変わったときも、その出力に Damage を出す。
+
+## 11. 作業領域の余白（Insets。D4 を改める）
+
+layer-shell のバーなどが確保する領域を、出力の作業領域から除く。余白が 0 のときは、D4（作業領域 = 出力の論理矩形）と同じ。
+
+- **D30 Insets**: `Insets { top, right, bottom, left }`（i32、すべて 0 以上）。フィールドは非公開で、`Insets::new(top, right, bottom, left) -> Option<Insets>`（負の値があれば None）、`top()` `right()` `bottom()` `left()`、`Default`（すべて 0）を持つ。
+- **D31 Command**: 出力ごとに insets を持つ。OutputAdded の時点では 0。`Command::OutputInsetsChanged { key: ExternalKey, insets: Insets }` で置き換える。未登録のキーは `UnknownKey`。同じ値なら、状態不変で Ok（Effect なし）。
+- **D32 作業領域**: 出力の論理矩形から insets を引いた矩形。幅または高さが 1 未満になるときは `Layout(AreaTooSmall)` で、状態は変わらない。これは OutputInsetsChanged と、insets を持つ出力への OutputChanged の両方で検査する。窓が 1 枚もなくても検査する。
+- **D33 使う場所**: Tiled の窓の配置、Floating の窓の配置（D8・D20）、不変条件 I5 は、作業領域を使う。Fullscreen の窓は insets を無視して、出力の論理矩形全体を使う（D9 のまま）。
+- **D34 再配置**: insets が変わると、窓を並べ直す。Effect は通常の規則（矩形が変わった窓の Configure、Damage）に従う。
