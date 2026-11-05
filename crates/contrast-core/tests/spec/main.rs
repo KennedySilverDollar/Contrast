@@ -37,3 +37,5 @@ fn core_specs_need_the_invariants_feature() {
 }
 #[cfg(feature = "invariants")]
 mod spec_core_insets;
+#[cfg(feature = "invariants")]
+mod spec_core_insets;

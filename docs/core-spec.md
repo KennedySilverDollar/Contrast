@@ -260,3 +260,13 @@ layer-shell のバーなどが確保する領域を、出力の作業領域か�
 - **D32 作業領域**: 出力の論理矩形から insets を引いた矩形。幅または高さが 1 未満になるときは `Layout(AreaTooSmall)` で、状態は変わらない。これは OutputInsetsChanged と、insets を持つ出力への OutputChanged の両方で検査する。窓が 1 枚もなくても検査する。
 - **D33 使う場所**: Tiled の窓の配置、Floating の窓の配置（D8・D20）、不変条件 I5 は、作業領域を使う。Fullscreen の窓は insets を無視して、出力の論理矩形全体を使う（D9 のまま）。
 - **D34 再配置**: insets が変わると、窓を並べ直す。Effect は通常の規則（矩形が変わった窓の Configure、Damage）に従う。
+
+## 11. 作業領域の余白（Insets。D4 を改める）
+
+layer-shell のバーなどが確保する領域を、出力の作業領域から除く。余白が 0 のときは、D4（作業領域 = 出力の論理矩形）と同じ。
+
+- **D30 Insets**: `Insets { top, right, bottom, left }`（i32、すべて 0 以上）。フィールドは非公開で、`Insets::new(top, right, bottom, left) -> Option<Insets>`（負の値があれば None）、`top()` `right()` `bottom()` `left()`、`Default`（すべて 0）を持つ。
+- **D31 Command**: 出力ごとに insets を持つ。OutputAdded の時点では 0。`Command::OutputInsetsChanged { key: ExternalKey, insets: Insets }` で置き換える。未登録のキーは `UnknownKey`。同じ値なら、状態不変で Ok（Effect なし）。
+- **D32 作業領域**: 出力の論理矩形から insets を引いた矩形。幅または高さが 1 未満になるときは `Layout(AreaTooSmall)` で、状態は変わらない。これは OutputInsetsChanged と、insets を持つ出力への OutputChanged の両方で検査する。窓が 1 枚もなくても検査する。
+- **D33 使う場所**: Tiled の窓の配置、Floating の窓の配置（D8・D20）、不変条件 I5 は、作業領域を使う。Fullscreen の窓は insets を無視して、出力の論理矩形全体を使う（D9 のまま）。
+- **D34 再配置**: insets が変わると、窓を並べ直す。Effect は通常の規則（矩形が変わった窓の Configure、Damage）に従う。
