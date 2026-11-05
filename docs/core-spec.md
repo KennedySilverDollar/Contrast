@@ -231,3 +231,22 @@ crates/contrast-core/src/
 ```
 
 層の依存方向は `scripts/check-layering.sh` が CI で検査する。
+
+## 12. スクロール列レイアウト（N3a。niri に合わせる）
+
+`LayoutMode::Scrolling` は、niri のように、列が横に並び、ビューが横にスクロールするレイアウト。既定は `Equal`（既存の等分。これまでの仕様のまま）。窓の高さの操作・`center-column`・ビューのアニメーションは N3b 以降（D48）。
+
+- **D35 設定**: `CoreConfig` に `with_layout(LayoutMode)`（`LayoutMode::{Equal, Scrolling}`、既定 `Equal`）、`with_default_column_width(Ratio)`（既定 1/2）、`with_preset_column_widths(Vec<Ratio>)`（既定 1/3・1/2・2/3。空なら既定のまま）を足す。`Ratio::new(num, den) -> Option<Ratio>`（`1 <= num <= den`）と `num()` `den()`、`ColumnWidth::{Proportion(Ratio), Fixed(i32)}`（`ColumnWidth::fixed(px) -> Option<ColumnWidth>`、px は 1 以上）を持つ。`Scrolling` のとき、`Layout` 型（`Columns` など）は使わない。
+- **D36 構造**: `Scrolling` のワークスペースは、列の並び（左から右）を持つ。列は、Tiled の窓の並び（上から下）、幅、「最後にフォーカスした窓」を持つ。Floating・Fullscreen の窓は列に属さない。
+- **D37 幅**: `Proportion(r)` の列の幅は、作業領域の幅 × r（切り捨て、1 以上）。`Fixed(px)` は px。新しい列の幅は `default_column_width`。作業領域より広い列を許す。
+- **D38 配置**: 列は、作業領域の x = 0 から隙間なく、左から右へ並ぶ。窓の矩形は `(作業領域.x + 列の x − view_x, 作業領域.y + 上の窓の高さの合計, 列の幅, 窓の高さ)`。列の中の窓の高さは等分（余りは上から 1 px ずつ）。ビューの外にある窓にも矩形を持ち、Configure を出す。
+- **D39 ビュー**: ワークスペースごとに `view_x`（0 以上の整数）を持ち、ワークスペースを切り替えても保つ。フォーカス列が見える最小のスクロールにする: 列の左端 < `view_x` なら列の左端へ、列の右端 > `view_x` + 作業領域の幅 なら（右端 − 作業領域の幅）へ。列の幅が作業領域の幅以上なら、列の左端を合わせる。最後に、`view_x` を `0` 以上、`max(0, 総幅 − 作業領域の幅)` 以下に収める。列の追加・削除・移動・幅の変更・フォーカスの移動のたびに適用する。
+- **D40 窓の追加**: Tiled の窓は、対象のワークスペースの、最後にフォーカスされた列の右隣に、新しい列として入る（列がなければ先頭）。フォーカスは新しい窓に移る（D7）。
+- **D41 窓の削除**: 列の最後の窓なら、列も削除する。フォーカス窓の削除後のフォーカスは、列に窓が残るなら下の窓（なければ上）、列ごと消えたなら右の列（なければ左）の「最後にフォーカスした窓」。他の窓の削除では、フォーカスは変わらない。
+- **D42 操作**: `Scrolling` では、`FocusDirection(Left/Right)` は隣の列の「最後にフォーカスした窓」へ、`FocusDirection(Up/Down)` は列の中の上下の窓へ移す。`MoveWindow(Left/Right)` はフォーカス列を隣の列と入れ替え、`MoveWindow(Up/Down)` は列の中で上下の窓と入れ替える。どれも、端では状態不変で Ok（Effect なし）。新しい Action `FocusColumnFirst`・`FocusColumnLast`・`MoveColumnToFirst`・`MoveColumnToLast` も、すでにその位置なら状態不変で Ok。フォーカスは、移した窓・列についていく。
+- **D43 積み**: `ConsumeWindowIntoColumn` は、右隣の列の先頭の窓を、フォーカス列の最下段へ移す（右隣が空になれば削除する。右隣がなければ、状態不変で Ok）。`ExpelWindowFromColumn` は、フォーカス窓を、元の列の右隣の新しい列（既定の幅）へ出す（列に窓が 1 枚だけなら、状態不変で Ok）。どちらも、フォーカスは窓についていく。
+- **D44 幅の操作**: `SetColumnWidth(w)` はフォーカス列の幅を `w` にする。`SwitchPresetColumnWidth` は、フォーカス列の現在の px 幅より広い最初のプリセットへ、なければ先頭のプリセットへ変える。`MaximizeColumn` は幅を `Proportion(1/1)` にし、すでに最大化されていれば、直前の幅に戻す。
+- **D45 Equal**: `Scrolling` 専用の Action（`FocusColumnFirst`・`FocusColumnLast`・`MoveColumnToFirst`・`MoveColumnToLast`・`ConsumeWindowIntoColumn`・`ExpelWindowFromColumn`・`SwitchPresetColumnWidth`・`MaximizeColumn`・`SetColumnWidth`）は、`Equal` では、状態不変で Ok（Effect なし）。
+- **D46 Floating・Fullscreen**: `Scrolling` でも、Floating（D8・D20）と Fullscreen（D9）は、列に属さない。Tiled に戻るときは、フォーカス列の右隣の新しい列として入る。
+- **D47 不変条件**: I5 は `Scrolling` では「同じワークスペースの Tiled の窓の矩形は重ならず、縦は作業領域の範囲に収まる（横はビューの外に出てよい）」に改める。I10: `Scrolling` の各 Tiled の窓は、ちょうど 1 つの列に属し、空の列はなく、列の幅は 1 以上。I11: フォーカスが Tiled の窓にあるとき、その列は D39 の条件を満たす。
+- **D48 N3a に含めないもの**: 窓の高さの操作（preset・reset・set）、`center-column`、ビューのアニメーション、`Scrolling` での `OutputChanged` による列幅の再計算の細部（`Proportion` の列は、新しい作業領域の幅で再計算する）。
