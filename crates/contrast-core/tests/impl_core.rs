@@ -1,7 +1,21 @@
 //! Core の実装テスト: 出力・窓の追加削除、Effect 列の順序、Action の基本動作。
 //!
-//! 各操作の後に `check_invariants`（I1〜I6）が Ok であることを確かめる。
+//! 各操作の後に `check_invariants`（I1〜I6・I9）が Ok であることを確かめる。
 //! `check_invariants` は `invariants` feature で公開されるので、そのときだけ動かす。
+
+/// feature の付け忘れで、core の実装テストが黙って 0 件になるのを防ぐ。
+#[cfg(not(feature = "invariants"))]
+#[test]
+#[allow(
+    clippy::assertions_on_constants,
+    reason = "feature の付け忘れを、テストの失敗として知らせる"
+)]
+fn core_impl_tests_need_the_invariants_feature() {
+    assert!(
+        cfg!(feature = "invariants"),
+        "core の実装テストは --all-features（または --features invariants）で実行する"
+    );
+}
 
 /// `expect` を補助関数でも使えるよう、テスト一式を `cfg(test)` モジュールに入れる。
 #[cfg(test)]
