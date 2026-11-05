@@ -1,51 +1,71 @@
 //! 1 フレームの描画: 背景色で塗り、Space 上の窓を重ね、フォーカス窓のタイルの縁に枠を描く。
 
+use std::fmt;
 use std::time::Duration;
 
 use smithay::{
-    backend::{
-        renderer::{
-            damage::OutputDamageTracker,
-            element::{Kind, solid::SolidColorRenderElement},
-            gles::GlesRenderer,
-        },
-        winit::WinitGraphicsBackend,
+    backend::renderer::{
+        damage::OutputDamageTracker,
+        element::{Kind, solid::SolidColorRenderElement},
+        gles::{GlesRenderer, GlesTarget},
     },
     output::Output,
-    utils::Rectangle,
 };
 
 use crate::state::Contrast;
 
-/// 出力 1 枚分を描いて提出し、クライアントに frame コールバックを送る。
-pub fn render_frame(
+/// 描画の失敗。バックエンド（winit / DRM）が受けて、ログに出すか、フレームを諦めるかを決める。
+#[derive(Debug)]
+pub enum RenderError {
+    /// 描画先（フレームバッファ）を束縛できなかった。
+    Bind(String),
+    /// 要素の描画に失敗した。
+    Render(String),
+    /// 描き終えたバッファの提出に失敗した。
+    Submit(String),
+}
+
+impl fmt::Display for RenderError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            RenderError::Bind(e) => write!(f, "bind failed: {e}"),
+            RenderError::Render(e) => write!(f, "render failed: {e}"),
+            RenderError::Submit(e) => write!(f, "submit failed: {e}"),
+        }
+    }
+}
+
+impl std::error::Error for RenderError {}
+
+/// 出力 1 枚分の絵（背景・窓・レイヤー面・枠）を `framebuffer` に描く。バックエンドには依存しない。
+///
+/// 描画先の用意（bind）と提出（submit / queue_frame）は呼び出し側のバックエンドが行う。
+pub fn render_scene(
     state: &mut Contrast,
-    backend: &mut WinitGraphicsBackend<GlesRenderer>,
+    renderer: &mut GlesRenderer,
+    framebuffer: &mut GlesTarget<'_>,
     output: &Output,
     damage_tracker: &mut OutputDamageTracker,
-) {
-    let size = backend.window_size();
-    let damage = Rectangle::from_size(size);
+) -> Result<(), RenderError> {
     let background = state.policy.background();
     let borders = border_elements(state);
+    smithay::desktop::space::render_output::<_, SolidColorRenderElement, _, _>(
+        output,
+        renderer,
+        framebuffer,
+        1.0,
+        0,
+        [&state.space],
+        &borders,
+        damage_tracker,
+        background,
+    )
+    .map(|_| ())
+    .map_err(|e| RenderError::Render(e.to_string()))
+}
 
-    {
-        let (renderer, mut framebuffer) = backend.bind().expect("failed to bind backend");
-        smithay::desktop::space::render_output::<_, SolidColorRenderElement, _, _>(
-            output,
-            renderer,
-            &mut framebuffer,
-            1.0,
-            0,
-            [&state.space],
-            &borders,
-            damage_tracker,
-            background,
-        )
-        .expect("render_output failed");
-    }
-    backend.submit(Some(&[damage])).expect("submit failed");
-
+/// 提出したあとの後始末: クライアントへ frame コールバックを送り、Space・popup・レイヤーを整理する。
+pub fn finish_frame(state: &mut Contrast, output: &Output) {
     state.space.elements().for_each(|window| {
         window.send_frame(
             output,

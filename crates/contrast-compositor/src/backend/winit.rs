@@ -7,11 +7,12 @@ use smithay::{
     },
     output::{Mode, Output, PhysicalProperties, Subpixel},
     reexports::calloop::EventLoop,
-    utils::{Physical, Size, Transform},
+    utils::{Physical, Rectangle, Size, Transform},
 };
 
 use contrast_core::Rect;
 
+use crate::render::{RenderError, finish_frame, render_scene};
 use crate::state::Contrast;
 
 /// 出力のリフレッシュレート（mHz）。winit では目安でしかない。
@@ -46,7 +47,8 @@ pub fn init_winit(
     );
     output.set_preferred(mode);
     state.space.map_output(&output, (0, 0));
-    state.output_added("winit", output_rect(mode.size));
+    let rect = output_rect(mode.size).ok_or("winit window size is not positive")?;
+    state.output_added("winit", rect);
     tracing::info!(size = ?mode.size, "output created");
 
     let mut damage_tracker = OutputDamageTracker::from_output(&output);
@@ -70,11 +72,18 @@ pub fn init_winit(
                     let changed = map.arrange();
                     tracing::info!(changed, zone = ?map.non_exclusive_zone(), "layers re-arranged");
                 }
-                state.output_changed(output_rect(size));
+                match output_rect(size) {
+                    Some(rect) => state.output_changed(rect),
+                    None => tracing::warn!(?size, "output size is not positive, layout skipped"),
+                }
             }
             WinitEvent::Input(event) => state.process_input_event(event),
             WinitEvent::Redraw => {
-                crate::render::render_frame(state, &mut backend, &output, &mut damage_tracker);
+                if let Err(e) = render_winit(state, &mut backend, &output, &mut damage_tracker) {
+                    tracing::error!("render: {e}, stopping");
+                    state.loop_signal.stop();
+                    return;
+                }
                 backend.window().request_redraw();
             }
             WinitEvent::CloseRequested => state.loop_signal.stop(),
@@ -84,7 +93,28 @@ pub fn init_winit(
     Ok(())
 }
 
-/// 出力の論理矩形（原点 (0, 0)、拡大率 1）。
-fn output_rect(size: Size<i32, Physical>) -> Rect {
-    Rect::new(0, 0, size.w, size.h).expect("output size is positive")
+/// winit の窓に 1 フレーム描いて提出し、後始末（frame コールバックなど）をする。
+fn render_winit(
+    state: &mut Contrast,
+    backend: &mut WinitGraphicsBackend<GlesRenderer>,
+    output: &Output,
+    damage_tracker: &mut OutputDamageTracker,
+) -> Result<(), RenderError> {
+    let damage = Rectangle::from_size(backend.window_size());
+    {
+        let (renderer, mut framebuffer) = backend
+            .bind()
+            .map_err(|e| RenderError::Bind(e.to_string()))?;
+        render_scene(state, renderer, &mut framebuffer, output, damage_tracker)?;
+    }
+    backend
+        .submit(Some(&[damage]))
+        .map_err(|e| RenderError::Submit(e.to_string()))?;
+    finish_frame(state, output);
+    Ok(())
+}
+
+/// 出力の論理矩形（原点 (0, 0)、拡大率 1）。大きさが正でなければ `None`。
+fn output_rect(size: Size<i32, Physical>) -> Option<Rect> {
+    Rect::new(0, 0, size.w, size.h)
 }
