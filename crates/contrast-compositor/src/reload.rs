@@ -29,6 +29,14 @@ impl Contrast {
                     generation,
                     self.store.binding_count()
                 );
+                let mode = self.policy.layout_settings().mode;
+                if mode != self.layout_mode {
+                    tracing::warn!(
+                        ?mode,
+                        running = ?self.layout_mode,
+                        "config: Layout mode changed, restart to apply (the running layout is kept)"
+                    );
+                }
                 self.reapply_layout();
                 self.reapply_input_settings();
             }

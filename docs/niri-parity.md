@@ -27,18 +27,20 @@ niri の設定の既定値は niri の既定（wiki / パッケージの既定�
 
 | niri の機能 | 使用 | Contrast の今 | 必要な変更 | 規模 |
 |---|---|---|---|---|
-| `preset-column-widths`（1/3・1/2・2/3） | はい | × 列の幅の概念が core に無い | core のレイアウトに列と幅 | L |
-| `default-column-width { proportion 0.5; }` | はい | × 同上（Contrast は窓が等分に並ぶ） | 同上 | L |
+| `preset-column-widths`（1/3・1/2・2/3） | はい | ○ **N3a で実装**（`Layout.presetColumnWidths`、`switch-preset-column-width`） | — | — |
+| `default-column-width { proportion 0.5; }` | はい | ○ **N3a で実装**（`Layout.defaultColumnWidth`、`mode="scrolling"`） | — | — |
 | `center-focused-column "never"` | はい | ○（スクロールしないので常に当たり前に満たす） | — | — |
-| `switch-preset-column-width` / `maximize-column` / `center-column` / `set-column-width` | はい | × 同上 | 同上 | L |
+| `switch-preset-column-width` / `maximize-column` / `set-column-width` | はい | ○ **N3a で実装**（`adjust-column-width` は ±N% の相対指定） | — | — |
+| `center-column` | はい | × N3b（core に操作が無い） | core | M |
 | `focus-column-left/right`・`move-column-left/right` | はい | ○（`focus-left/right`・`move-left/right`） | — | — |
-| `focus-column-first/last`・`move-column-to-first/last` | はい | × core に操作が無い（`△`: コンポジタが `focus-left` を繰り返すだけなら可。M） | core の Action か、コンポジタの反復 | M |
-| `focus-window-up/down`・`move-window-up/down` | はい | × 列の中に縦の並びが無い（今は前/次で代用） | 列に窓を積む（N3） | L |
-| `consume-window-into-column`・`expel-window-from-column`・`consume-or-expel-window-left/right` | はい | × 同上 | 同上 | L |
-| `switch-preset-window-height`・`reset-window-height`・`set-window-height` | はい | × 同上 | 同上 | L |
+| `focus-column-first/last`・`move-column-to-first/last` | はい | ○ **N3a で実装** | — | — |
+| `focus-window-up/down`・`move-window-up/down` | はい | ○ **N3a で実装**（列の中の上下） | — | — |
+| `consume-window-into-column`・`expel-window-from-column` | はい | ○ **N3a で実装** | — | — |
+| `consume-or-expel-window-left/right` | はい | × N3b | core | M |
+| `switch-preset-window-height`・`reset-window-height`・`set-window-height` | はい | × N3b（窓の高さ） | core | L |
 | `fullscreen-window` | はい | ○（`toggle-fullscreen`） | — | — |
 | `toggle-window-floating` | いいえ（既定の Mod+V） | ○（`toggle-floating`） | — | — |
-| スクロール（ビューが列を追う） | 暗黙 | × | ビューの横スクロールと、その描画オフセット | L |
+| スクロール（ビューが列を追う） | 暗黙 | ○ **N3a で実装**（フォーカス列が見える最小のスクロール） | — | — |
 
 ## ワークスペース
 
@@ -92,7 +94,7 @@ niri の設定の既定値は niri の既定（wiki / パッケージの既定�
 | 区分 | ○ | △ | × |
 |---|---|---|---|
 | 見た目 | 3 | 7（うち gaps・struts・shadow・角丸の 4 つを N1 で実装） | 1 |
-| レイアウト | 4 | 0 | 8 |
+| レイアウト | 11 | 0 | 3 |（N3a 後。表の行は上の個別の行を参照）
 | ワークスペース | 2 | 0 | 6 |
 | 操作 | 3 | 3 | 3 |
 | 入力 | 3 | 1 | 0 |
@@ -109,6 +111,7 @@ niri の設定の既定値は niri の既定（wiki / パッケージの既定�
 
 - **N1（今回）**: 見た目。`gap`・`outerGap`、角丸、影、非フォーカスの枠の幅、`Cursor`。`examples/niri.cdl` を niri の config に寄せる。
 - **N2**: 使っているのに無いもの（core に触らない）。`spawn-at-startup` と `environment`（CDL の `Startup` / `Environment`）、`open-fullscreen`、`focus-follows-mouse`、`cursor.hide-after-inactive`、`focus-column-first/last` の代用。続けて、矩形の補間によるアニメーション（窓の移動・サイズ・ワークスペース切替）。
-- **N3**: core のレイアウト（列モデル）。列の幅（preset・default・set・maximize・center）、列への積み（consume/expel、focus/move-window-up/down、高さ）、ビューの横スクロール。これで `examples/niri.cdl` の「N3 待ち」が解ける。
+- **N3a（済み）**: core のスクロール列レイアウト（列幅・積み・ビュー）とコンポジタの配線。残りは **N3b**: 窓の高さの操作、`center-column`、`consume-or-expel-window-left/right`、ビューのアニメーション。
+- **N3（元の提案）**: core のレイアウト（列モデル）。列の幅（preset・default・set・maximize・center）、列への積み（consume/expel、focus/move-window-up/down、高さ）、ビューの横スクロール。これで `examples/niri.cdl` の「N3 待ち」が解ける。
 - **N4**: ワークスペースとモニタ。動的な縦のワークスペース、`move-workspace-*`、名前つき、複数出力・ホットプラグ・スケール・モード指定、フォーカスとウィンドウのモニタ間移動。
 - **N5**: オーバービュー、スクリーンショット（と screencopy）、ホットキーのオーバーレイ、ホイールのバインド、session-lock。
