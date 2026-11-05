@@ -37,15 +37,12 @@ use smithay::backend::{
     egl::{EGLContext, EGLDisplay},
     input::InputEvent,
     libinput::{LibinputInputBackend, LibinputSessionInterface},
-    renderer::{
-        ImportDma,
-        element::{Kind, solid::SolidColorBuffer, solid::SolidColorRenderElement},
-        gles::GlesRenderer,
-    },
+    renderer::{ImportDma, element::solid::SolidColorBuffer, gles::GlesRenderer},
     session::{Event as SessionEvent, Session, libseat::LibSeatSession},
     udev::{UdevBackend, primary_gpu},
 };
-use smithay::input::pointer::MotionEvent;
+use smithay::desktop::utils::send_frames_surface_tree;
+use smithay::input::pointer::{CursorImageStatus, MotionEvent};
 use smithay::output::{Mode as OutputMode, Output, PhysicalProperties, Subpixel};
 use smithay::reexports::{
     calloop::{
@@ -64,6 +61,7 @@ use smithay::utils::{DeviceFd, Logical, Point, SERIAL_COUNTER, Transform};
 
 use contrast_core::Rect;
 
+use crate::cursor::{CursorTheme, cursor_elements};
 use crate::render::{SceneElement, finish_frame, scene_elements};
 use crate::state::Contrast;
 
@@ -73,9 +71,6 @@ const FIRST_FLIP_TIMEOUT: Duration = Duration::from_secs(2);
 const DEFAULT_EXIT_AFTER_SECS: u64 = 30;
 /// 空のフレームが返ったときにやり直すまでの間隔（約 1 リフレッシュ）。
 const RETRY_INTERVAL: Duration = Duration::from_millis(16);
-/// カーソル（色つきの四角）の一辺と色。
-const CURSOR_SIZE: i32 = 12;
-const CURSOR_COLOR: [f32; 4] = [1.0, 1.0, 1.0, 1.0];
 
 /// DRM バックエンドの起動・列挙・表示の失敗。
 #[derive(Debug)]
@@ -219,7 +214,10 @@ struct Drm {
     gpu: Option<Gpu>,
     _session: LibSeatSession,
     output: Output,
-    cursor: SolidColorBuffer,
+    /// xcursor のテーマ。
+    theme: CursorTheme,
+    /// テーマが使えないときの四角。
+    fallback_cursor: SolidColorBuffer,
     libinput: Libinput,
     handle: LoopHandle<'static, Contrast>,
     active: bool,
@@ -255,7 +253,12 @@ impl Drm {
         }
         let first = self.frames == 0;
         let background = state.policy.background();
-        let cursor = self.cursor_element(state);
+        let pointer_pos = state
+            .seat
+            .get_pointer()
+            .map(|p| p.current_location())
+            .unwrap_or_default();
+        let cursor_status = state.cursor_status.clone();
         let output_name = self.output.clone();
         let Some(gpu) = self.gpu.as_mut() else {
             return;
@@ -263,7 +266,14 @@ impl Drm {
         let (Some(output), Some(renderer)) = (gpu.output.as_mut(), gpu.renderer.as_mut()) else {
             return;
         };
-        let elements = match scene_elements(state, renderer, &output_name, Some(cursor)) {
+        let cursor = cursor_elements(
+            renderer,
+            &mut self.theme,
+            &mut self.fallback_cursor,
+            &cursor_status,
+            pointer_pos,
+        );
+        let elements = match scene_elements(state, renderer, &output_name, cursor) {
             Ok(e) => e,
             Err(e) => {
                 self.fail(state, DrmError::Frame(e.to_string()));
@@ -288,7 +298,18 @@ impl Drm {
             Err(e) => Err(Some(e)),
         };
         match result {
-            Ok(()) => finish_frame(state, &output_name),
+            Ok(()) => {
+                finish_frame(state, &output_name);
+                if let CursorImageStatus::Surface(surface) = &cursor_status {
+                    send_frames_surface_tree(
+                        surface,
+                        &output_name,
+                        state.start_time.elapsed(),
+                        Some(Duration::ZERO),
+                        |_, _| Some(output_name.clone()),
+                    );
+                }
+            }
             Err(Some(error)) => self.fail(state, error),
             Err(None) => {
                 // 空のフレーム: 少し待ってやり直す。
@@ -305,23 +326,6 @@ impl Drm {
                 }
             }
         }
-    }
-
-    /// ポインタの位置に置く、色つきの四角。
-    fn cursor_element(&mut self, state: &Contrast) -> SolidColorRenderElement {
-        self.cursor.update((CURSOR_SIZE, CURSOR_SIZE), CURSOR_COLOR);
-        let loc: Point<i32, Logical> = state
-            .seat
-            .get_pointer()
-            .map(|p| p.current_location().to_i32_round())
-            .unwrap_or_default();
-        SolidColorRenderElement::from_buffer(
-            &self.cursor,
-            (loc.x, loc.y),
-            1.0,
-            1.0,
-            Kind::Unspecified,
-        )
     }
 
     /// vblank: 提出済みのフレームを確定して、次を出す。
@@ -448,7 +452,8 @@ pub fn init(
         gpu: Some(gpu),
         _session: session.clone(),
         output: output.clone(),
-        cursor: SolidColorBuffer::default(),
+        theme: CursorTheme::from_env(),
+        fallback_cursor: SolidColorBuffer::default(),
         libinput,
         handle: handle.clone(),
         active: session.is_active(),

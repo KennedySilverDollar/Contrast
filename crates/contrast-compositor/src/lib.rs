@@ -4,6 +4,7 @@
 //! 配置・キーバインド・背景色は `contrast_policy::Policy` に問い合わせる。
 
 mod backend;
+mod cursor;
 mod handler;
 mod input;
 mod reload;

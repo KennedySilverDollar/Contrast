@@ -9,8 +9,8 @@ use smithay::{
         ImportDma,
         damage::OutputDamageTracker,
         element::{
-            Kind, render_elements, solid::SolidColorRenderElement,
-            surface::WaylandSurfaceRenderElement,
+            Kind, memory::MemoryRenderBufferRenderElement, render_elements,
+            solid::SolidColorRenderElement, surface::WaylandSurfaceRenderElement,
         },
         gles::{GlesRenderer, GlesTarget},
     },
@@ -58,8 +58,12 @@ impl std::error::Error for RenderError {}
 render_elements! {
     /// DRM の `DrmOutput::render_frame` に渡す要素。`render_output` と同じく、枠・カーソル（custom）が前、Space（窓とレイヤー面）が後ろ。
     pub SceneElement<=GlesRenderer>;
-    /// 枠の帯とカーソル。
+    /// 枠の帯と、簡易カーソル。
     Solid=SolidColorRenderElement,
+    /// テーマのカーソル。
+    Memory=MemoryRenderBufferRenderElement<GlesRenderer>,
+    /// クライアントが指定したカーソルの面。
+    Surface=WaylandSurfaceRenderElement<GlesRenderer>,
     /// Space の要素（窓・レイヤー面・popup）。
     Space=SpaceRenderElements<GlesRenderer, WaylandSurfaceRenderElement<GlesRenderer>>,
 }
@@ -69,14 +73,15 @@ pub fn scene_elements(
     state: &mut Contrast,
     renderer: &mut GlesRenderer,
     output: &Output,
-    cursor: Option<SolidColorRenderElement>,
+    cursor: Vec<SceneElement>,
 ) -> Result<Vec<SceneElement>, RenderError> {
     let borders = border_elements(state);
     let space =
         smithay::desktop::space::space_render_elements(renderer, [&state.space], output, 1.0)
             .map_err(|e| RenderError::Render(e.to_string()))?;
-    let mut elements: Vec<SceneElement> = Vec::with_capacity(1 + borders.len() + space.len());
-    elements.extend(cursor.map(SceneElement::Solid));
+    let mut elements: Vec<SceneElement> =
+        Vec::with_capacity(cursor.len() + borders.len() + space.len());
+    elements.extend(cursor);
     elements.extend(borders.into_iter().map(SceneElement::Solid));
     elements.extend(space.into_iter().map(SceneElement::Space));
     Ok(elements)

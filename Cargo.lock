@@ -398,6 +398,7 @@ dependencies = [
  "contrast-policy",
  "smithay",
  "tracing",
+ "xcursor",
 ]
 
 [[package]]
