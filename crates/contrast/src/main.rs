@@ -1,14 +1,17 @@
 //! Contrast の実行ファイル（nested プロトタイプ）。
 //!
-//! 設定ファイルのパスは `CONTRAST_CONFIG`、無ければ `~/.config/contrast/config.cdl`。
-//! 読み込み器はまだスタブなので、ファイルの有無にかかわらず `StaticPolicy` で動く。
-//! 端末は環境変数 `CONTRAST_TERMINAL`、無ければ `foot`。
+//! 設定ファイル（CDL）のパスは `CONTRAST_CONFIG` → `$XDG_CONFIG_HOME/contrast/config.cdl` →
+//! `~/.config/contrast/config.cdl`。ファイルが無い・壊れているときは組み込みの既定値で起動し、
+//! 壊れているときは診断を error でログに出す。端末（既定値の Alt+Return）は `CONTRAST_TERMINAL`、無ければ `foot`。
 
 use std::io::IsTerminal;
+use std::rc::Rc;
 
+use contrast_compositor::ConfigSource;
 use contrast_policy::{
-    ConfigLoader, LoadOutcome, NotImplementedLoader, Policy, StaticPolicy, resolve_config_path,
+    Config, ConfigStore, Settings, StartupStatus, load_or_builtin, resolve_config_path,
 };
+use contrast_policy_cdl::CdlLoader;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let filter = tracing_subscriber::EnvFilter::try_from_default_env()
@@ -19,39 +22,44 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .init();
 
     let terminal = std::env::var("CONTRAST_TERMINAL").unwrap_or_else(|_| "foot".to_string());
-    let policy = load_policy(&NotImplementedLoader, StaticPolicy::new(terminal));
-    contrast_compositor::run(policy)
-}
-
-/// 設定ファイルを `loader` で読み、読めなければ `fallback` を使う。どの場合も落ちない。
-fn load_policy(loader: &dyn ConfigLoader, fallback: StaticPolicy) -> Box<dyn Policy> {
     let path = resolve_config_path(
         std::env::var_os(contrast_policy::config::CONFIG_ENV),
+        std::env::var_os("XDG_CONFIG_HOME"),
         std::env::var_os("HOME"),
     );
-    let Some(path) = path else {
-        tracing::info!("config: path=<none> exists=false loader={}", loader.name());
-        return Box::new(fallback);
+    let loader = CdlLoader::new();
+    let builtin = Config::new(Settings::builtin_with_terminal(terminal), None);
+    let (config, status) = load_or_builtin(&loader, path.as_deref(), builtin);
+
+    let store = Rc::new(ConfigStore::new(config));
+    let loaded = match &status {
+        StartupStatus::Loaded => "true",
+        StartupStatus::NoPath | StartupStatus::Absent => "absent",
+        StartupStatus::Failed(_) => "failed",
     };
-    let exists = path.exists();
     tracing::info!(
-        "config: path={} exists={} loader={}",
-        path.display(),
-        exists,
-        loader.name()
+        "config: path={} loaded={} generation={} bindings={}",
+        path.as_deref()
+            .map_or_else(|| "<none>".to_string(), |p| p.display().to_string()),
+        loaded,
+        store.generation(),
+        store.binding_count()
     );
-    if !exists {
-        return Box::new(fallback);
-    }
-    match loader.load(&path) {
-        LoadOutcome::Loaded(policy) => {
-            tracing::info!(path = %path.display(), "loaded config");
-            policy
-        }
-        LoadOutcome::NotLoaded => Box::new(fallback),
-        LoadOutcome::Failed(err) => {
-            tracing::error!(path = %path.display(), %err, "config failed, using static policy");
-            Box::new(fallback)
+    if let StartupStatus::Failed(diagnostics) = &status {
+        tracing::error!(
+            "config: using built-in defaults ({} errors)",
+            diagnostics.len()
+        );
+        for d in diagnostics {
+            tracing::error!("{d}");
         }
     }
+
+    contrast_compositor::run(
+        store,
+        ConfigSource {
+            loader: Box::new(loader),
+            path,
+        },
+    )
 }

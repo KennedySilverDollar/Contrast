@@ -192,6 +192,35 @@ impl ConfigStore {
     }
 }
 
+/// 起動時の読み込みの結果。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StartupStatus {
+    /// 設定ファイルのパスを決められなかった（`HOME` も無いなど）。既定値で起動する。
+    NoPath,
+    /// 設定ファイルが無い。既定値で起動する（エラーではない）。
+    Absent,
+    /// 読み込めた。
+    Loaded,
+    /// 失敗した。既定値で起動する。診断は 1 件以上。
+    Failed(Vec<ConfigDiagnostic>),
+}
+
+/// 起動時の設定を決める。読めなければ（無い・壊れている）`builtin` を使う。どの場合も落ちない。
+pub fn load_or_builtin(
+    loader: &dyn ConfigLoader,
+    path: Option<&Path>,
+    builtin: Config,
+) -> (Config, StartupStatus) {
+    let Some(path) = path else {
+        return (builtin, StartupStatus::NoPath);
+    };
+    match loader.load(path) {
+        LoadOutcome::Loaded(config) => (config, StartupStatus::Loaded),
+        LoadOutcome::Absent => (builtin, StartupStatus::Absent),
+        LoadOutcome::Failed(diagnostics) => (builtin, StartupStatus::Failed(diagnostics)),
+    }
+}
+
 impl Policy for ConfigStore {
     fn background(&self) -> [f32; 4] {
         self.config().settings.appearance.background
@@ -328,6 +357,49 @@ mod tests {
                 .collect::<Vec<_>>(),
             [codes::NOT_APPLIED]
         );
+    }
+
+    #[test]
+    fn startup_falls_back_to_builtin() {
+        /// 結果を決めて返す読み込み器。
+        struct Fixed(fn() -> LoadOutcome);
+        impl ConfigLoader for Fixed {
+            fn name(&self) -> &'static str {
+                "fixed"
+            }
+            fn load(&self, _path: &Path) -> LoadOutcome {
+                (self.0)()
+            }
+        }
+        let path = Path::new("/x");
+        let (c, st) = load_or_builtin(&Fixed(|| LoadOutcome::Absent), None, Config::builtin());
+        assert_eq!(
+            (c.settings, st),
+            (Settings::builtin(), StartupStatus::NoPath)
+        );
+        let (_, st) = load_or_builtin(
+            &Fixed(|| LoadOutcome::Absent),
+            Some(path),
+            Config::builtin(),
+        );
+        assert_eq!(st, StartupStatus::Absent);
+        let (c, st) = load_or_builtin(
+            &Fixed(|| LoadOutcome::Failed(vec![diag(codes::BAD_PROP)])),
+            Some(path),
+            Config::builtin(),
+        );
+        assert_eq!(c.settings, Settings::builtin());
+        assert!(matches!(st, StartupStatus::Failed(ref d) if d.len() == 1));
+        let (c, st) = load_or_builtin(
+            &Fixed(|| {
+                let mut s = Settings::builtin();
+                s.workspaces = 7;
+                LoadOutcome::Loaded(Config::new(s, None))
+            }),
+            Some(path),
+            Config::builtin(),
+        );
+        assert_eq!((c.settings.workspaces, st), (7, StartupStatus::Loaded));
     }
 
     #[test]
