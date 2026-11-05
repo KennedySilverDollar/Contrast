@@ -5,6 +5,7 @@
 
 mod backend;
 mod cursor;
+mod geometry;
 mod handler;
 mod input;
 mod reload;

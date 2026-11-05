@@ -148,6 +148,11 @@ fn edges(tile: contrast_core::Rect, b: i32) -> Option<[Band; 4]> {
     ])
 }
 
+/// フォーカス外の枠の太さ。未指定は `border`、指定は 0〜`border` に収める。
+fn unfocused_width(border: i32, inactive: Option<i32>) -> i32 {
+    inactive.map_or(border, |w| w.clamp(0, border.max(0)))
+}
+
 /// フォーカス窓の枠（`focusColor`）と、設定があればフォーカス外の窓の枠（`borderColor`）の帯。
 fn border_elements(state: &mut Contrast) -> Vec<SolidColorRenderElement> {
     let b = state.policy.border_width();
@@ -160,7 +165,10 @@ fn border_elements(state: &mut Contrast) -> Vec<SolidColorRenderElement> {
     }
     if let Some(color) = state.policy.unfocused_border_color() {
         for tile in state.unfocused_tiles() {
-            if let Some(es) = edges(tile, b) {
+            // 窓の大きさは枠の太さ `b` で決まっている。細い枠は窓に接する側に描く。
+            let thin = unfocused_width(b, state.policy.appearance().inactive_border_width);
+            let ring = crate::geometry::window_rect(tile, b - thin);
+            if let Some(es) = edges(ring, thin) {
                 bands.extend(es.into_iter().map(|e| (e, color)));
             }
         }
@@ -178,4 +186,18 @@ fn border_elements(state: &mut Contrast) -> Vec<SolidColorRenderElement> {
             SolidColorRenderElement::from_buffer(buffer, (ex, ey), 1.0, 1.0, Kind::Unspecified)
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unfocused_width_defaults_to_the_border_and_is_clamped() {
+        assert_eq!(unfocused_width(4, None), 4);
+        assert_eq!(unfocused_width(4, Some(2)), 2);
+        assert_eq!(unfocused_width(4, Some(9)), 4);
+        assert_eq!(unfocused_width(4, Some(-1)), 0);
+        assert_eq!(unfocused_width(0, Some(3)), 0);
+    }
 }

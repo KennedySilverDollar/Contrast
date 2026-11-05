@@ -60,6 +60,7 @@ use smithay::reexports::{
 use smithay::utils::{DeviceFd, Logical, Point, SERIAL_COUNTER, Transform};
 
 use contrast_core::Rect;
+use contrast_policy::CursorSettings;
 
 use crate::cursor::{CursorTheme, cursor_elements};
 use crate::render::{SceneElement, finish_frame, scene_elements};
@@ -214,6 +215,8 @@ struct Drm {
     gpu: Option<Gpu>,
     _session: LibSeatSession,
     output: Output,
+    /// テーマを作ったときの設定（リロードで変わったら作り直す）。
+    cursor_cfg: CursorSettings,
     /// xcursor のテーマ。
     theme: CursorTheme,
     /// テーマが使えないときの四角。
@@ -259,6 +262,11 @@ impl Drm {
             .map(|p| p.current_location())
             .unwrap_or_default();
         let cursor_status = state.cursor_status.clone();
+        let cursor_cfg = state.policy.cursor_settings();
+        if cursor_cfg != self.cursor_cfg {
+            self.theme = CursorTheme::resolve(&cursor_cfg);
+            self.cursor_cfg = cursor_cfg;
+        }
         let output_name = self.output.clone();
         let Some(gpu) = self.gpu.as_mut() else {
             return;
@@ -452,7 +460,8 @@ pub fn init(
         gpu: Some(gpu),
         _session: session.clone(),
         output: output.clone(),
-        theme: CursorTheme::from_env(),
+        cursor_cfg: state.policy.cursor_settings(),
+        theme: CursorTheme::resolve(&state.policy.cursor_settings()),
         fallback_cursor: SolidColorBuffer::default(),
         libinput,
         handle: handle.clone(),

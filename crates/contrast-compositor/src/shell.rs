@@ -58,18 +58,6 @@ fn raw(id: WindowId) -> u64 {
     id.raw()
 }
 
-/// タイルを四辺から `b` だけ縮めた矩形。縮められなければタイルそのもの。
-pub fn inset(tile: Rect, b: i32) -> Rect {
-    let twice = b.saturating_mul(2);
-    Rect::new(
-        tile.x().saturating_add(b),
-        tile.y().saturating_add(b),
-        tile.width().saturating_sub(twice),
-        tile.height().saturating_sub(twice),
-    )
-    .unwrap_or(tile)
-}
-
 /// Smithay の窓のトップレベル surface。
 fn surface_of(window: &Window) -> WlSurface {
     window
@@ -119,7 +107,7 @@ impl Contrast {
         if !w.visible || w.state == WindowState::Fullscreen {
             return None;
         }
-        w.rect
+        w.rect.map(|tile| self.frame_of(tile, w.state))
     }
 
     /// フォーカス外の表示中の窓のタイル（全画面は除く）。フォーカス外の枠を描くのに使う。
@@ -129,8 +117,24 @@ impl Contrast {
         view.visible_windows()
             .iter()
             .filter(|w| Some(w.id) != focus && w.state != WindowState::Fullscreen)
-            .filter_map(|w| w.rect)
+            .filter_map(|w| w.rect.map(|tile| self.frame_of(tile, w.state)))
             .collect()
+    }
+
+    /// タイルから、隙間（`gap`・`outerGap`）を引いたフレーム（枠線の外側の矩形）。浮動・全画面は隙間なし。
+    pub fn frame_of(&self, tile: Rect, state: WindowState) -> Rect {
+        let layout = self.policy.layout_settings();
+        if state != WindowState::Tiled || (layout.gap <= 0 && layout.outer_gap <= 0) {
+            return tile;
+        }
+        let view = self.core.view();
+        let tiles = view
+            .visible_windows()
+            .into_iter()
+            .filter(|w| w.state == WindowState::Tiled)
+            .filter_map(|w| w.rect);
+        let bounds = crate::geometry::bounds_of(tiles).unwrap_or(tile);
+        crate::geometry::frame_rect(tile, bounds, layout.gap, layout.outer_gap)
     }
 
     /// 表示中の窓の配置をポリシーの今の値（枠の太さなど）で取り直す。設定のリロードのあとに呼ぶ。
@@ -335,7 +339,7 @@ impl Contrast {
         let border = self.policy.border_width().max(0);
         let rect = match state {
             WindowState::Fullscreen => tile,
-            _ => inset(tile, border),
+            _ => crate::geometry::window_rect(self.frame_of(tile, state), border),
         };
         let toplevel = window.toplevel().expect("wayland toplevel");
         toplevel.with_pending_state(|s| {
@@ -417,7 +421,7 @@ impl Contrast {
             };
             let rect = match w.state {
                 WindowState::Fullscreen => tile,
-                _ => inset(tile, border),
+                _ => crate::geometry::window_rect(self.frame_of(tile, w.state), border),
             };
             shown.push((window, rect));
         }

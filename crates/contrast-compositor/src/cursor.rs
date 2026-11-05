@@ -25,6 +25,8 @@ use smithay::{
     wayland::compositor::with_states,
 };
 
+use contrast_policy::CursorSettings;
+
 use crate::render::SceneElement;
 
 /// カーソルの既定の大きさ（`XCURSOR_SIZE` が無いとき）。
@@ -32,6 +34,28 @@ const DEFAULT_SIZE: u32 = 24;
 /// 簡易カーソル（四角）の一辺と色。
 const FALLBACK_SIZE: i32 = 12;
 const FALLBACK_COLOR: [f32; 4] = [1.0, 1.0, 1.0, 1.0];
+
+/// テーマ名と大きさの優先順位（設定 > 環境変数 > 既定）。環境変数の大きさが範囲外・非数なら無視する。
+fn resolve_theme(
+    settings: &CursorSettings,
+    env_theme: Option<&str>,
+    env_size: Option<&str>,
+) -> (String, u32) {
+    let name = settings
+        .theme
+        .clone()
+        .or_else(|| env_theme.filter(|n| !n.is_empty()).map(str::to_owned))
+        .unwrap_or_else(|| "default".to_owned());
+    let size = settings
+        .size
+        .or_else(|| {
+            env_size
+                .and_then(|s| s.trim().parse::<u32>().ok())
+                .filter(|s| (8..=256).contains(s))
+        })
+        .unwrap_or(DEFAULT_SIZE);
+    (name, size)
+}
 
 /// テーマから読んだカーソル 1 つ。
 pub struct ThemeCursor {
@@ -49,17 +73,12 @@ pub struct CursorTheme {
 }
 
 impl CursorTheme {
-    /// `XCURSOR_THEME`（無ければ `default`）と `XCURSOR_SIZE`（無ければ 24）で作る。まだ何も読まない。
-    pub fn from_env() -> Self {
-        let name = std::env::var("XCURSOR_THEME")
-            .ok()
-            .filter(|n| !n.is_empty())
-            .unwrap_or_else(|| "default".to_owned());
-        let size = std::env::var("XCURSOR_SIZE")
-            .ok()
-            .and_then(|s| s.trim().parse::<u32>().ok())
-            .filter(|s| (8..=256).contains(s))
-            .unwrap_or(DEFAULT_SIZE);
+    /// 設定（CDL の `Cursor`）> 環境変数 `XCURSOR_THEME` / `XCURSOR_SIZE` > 既定（`default` / 24）で作る。
+    /// まだ何も読まない。
+    pub fn resolve(settings: &CursorSettings) -> Self {
+        let env_theme = std::env::var("XCURSOR_THEME").ok();
+        let env_size = std::env::var("XCURSOR_SIZE").ok();
+        let (name, size) = resolve_theme(settings, env_theme.as_deref(), env_size.as_deref());
         Self::new(name, size)
     }
 
@@ -251,6 +270,28 @@ mod tests {
             eprintln!("cursor theme {theme}: hotspot=({hx}, {hy})");
             assert!(hx >= 0 && hy >= 0);
         }
+    }
+
+    #[test]
+    fn theme_priority_is_settings_then_env_then_default() {
+        let none = CursorSettings::default();
+        assert_eq!(resolve_theme(&none, None, None), ("default".to_owned(), 24));
+        assert_eq!(
+            resolve_theme(&none, Some("Env"), Some("32")),
+            ("Env".to_owned(), 32)
+        );
+        let set = CursorSettings {
+            theme: Some("Cdl".to_owned()),
+            size: Some(48),
+        };
+        assert_eq!(
+            resolve_theme(&set, Some("Env"), Some("32")),
+            ("Cdl".to_owned(), 48)
+        );
+        // 環境変数の不正な大きさは既定に戻る。
+        assert_eq!(resolve_theme(&none, None, Some("4")).1, 24);
+        assert_eq!(resolve_theme(&none, None, Some("big")).1, 24);
+        assert_eq!(resolve_theme(&none, Some(""), None).0, "default");
     }
 
     #[test]
