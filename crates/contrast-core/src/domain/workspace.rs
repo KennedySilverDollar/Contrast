@@ -100,3 +100,57 @@ impl Workspace {
             .copied()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use alloc::vec;
+
+    use super::*;
+    use crate::domain::column::{ColumnWidth, Ratio};
+    use crate::domain::id::IdKind;
+
+    /// 窓 `n` の ID。
+    fn wid(n: u64) -> WindowId {
+        WindowId::from_raw(n)
+    }
+
+    /// 窓 `ids` を 1 列ずつに入れたワークスペース。
+    fn with_columns(ids: &[u64]) -> Workspace {
+        let mut ws = Workspace::new(WorkspaceId::from_raw(1), WorkspaceIndex::new(0));
+        for n in ids {
+            ws.windows.push(wid(*n));
+            ws.columns.push(Column::single(
+                wid(*n),
+                ColumnWidth::Proportion(Ratio::HALF),
+            ));
+        }
+        ws
+    }
+
+    #[test]
+    fn removing_a_window_drops_it_from_its_column_and_deletes_empty_columns() {
+        let mut ws = with_columns(&[1, 2, 3]);
+        ws.columns
+            .get_mut(0)
+            .map(|c| c.windows.push(wid(4)))
+            .unwrap_or_default();
+        ws.windows.push(wid(4));
+        ws.remove_window(wid(1));
+        // 列 0 には 4 だけが残る。
+        assert_eq!(ws.column_of(wid(4)), Some((0, 0)));
+        ws.remove_window(wid(4));
+        // 空になった列は消える。
+        assert_eq!(ws.columns.len(), 2);
+        assert_eq!(ws.column_of(wid(2)), Some((0, 0)));
+        assert_eq!(ws.column_of(wid(3)), Some((1, 0)));
+    }
+
+    #[test]
+    fn remove_from_columns_leaves_the_window_order_alone() {
+        let mut ws = with_columns(&[1, 2]);
+        ws.remove_from_columns(wid(1));
+        assert_eq!(ws.windows, vec![wid(1), wid(2)]);
+        assert_eq!(ws.column_of(wid(1)), None);
+        assert_eq!(ws.columns.len(), 1);
+    }
+}

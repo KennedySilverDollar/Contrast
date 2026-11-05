@@ -585,4 +585,19 @@ mod tests {
         );
         Ok(())
     }
+
+    /// I10: 列の窓が順序列にない（数は合っていても、Tiled の窓がどの列にもない）。
+    #[test]
+    fn detects_i10_when_a_column_holds_a_window_that_does_not_exist() -> Result<(), &'static str> {
+        let mut state = scrolling_valid().ok_or("setup")?;
+        let index = WorkspaceIndex::new(0);
+        let ws = state.workspace_mut(index).ok_or("ws")?;
+        ws.columns.clear();
+        ws.columns.push(Column::single(
+            WindowId::from_raw(99),
+            ColumnWidth::Proportion(Ratio::FULL),
+        ));
+        assert_eq!(check(&state), Err(InvariantViolation::I10(index)));
+        Ok(())
+    }
 }

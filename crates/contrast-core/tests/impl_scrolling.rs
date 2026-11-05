@@ -238,4 +238,73 @@ mod scrolling_impl {
         );
         assert_eq!(c.snapshot(), before);
     }
+
+    /// 窓 `k` にフォーカスがあるか。
+    fn focus_is(c: &TestCore, k: u64) -> bool {
+        c.view().focus() == c.view().window_id(ExternalKey::new(k))
+    }
+
+    fn act(c: &mut TestCore, a: Action) {
+        apply(c, Command::Action(a));
+    }
+
+    #[test]
+    fn closing_the_focused_column_goes_right_even_if_the_window_order_says_otherwise() {
+        // 列の並びは 12・11・13、窓の順序列は 11・12・13。11 を閉じると、D41 では右の列の 13 へ。
+        let mut c = core_with(CoreConfig::new(4), 3);
+        act(&mut c, Action::FocusColumnFirst);
+        act(&mut c, Action::MoveWindow(Direction::Right));
+        assert!(focus_is(&c, 11));
+        apply(&mut c, Command::WindowUnmapped(ExternalKey::new(11)));
+        assert!(focus_is(&c, 13));
+    }
+
+    #[test]
+    fn closing_a_window_in_a_stack_goes_to_the_one_below_by_column_order() {
+        // 列 [12, 11, 13]（11 は真ん中）。11 を閉じると、下の 13 へ（順序列では 12 が隣）。
+        let mut c = core_with(CoreConfig::new(4), 3);
+        act(&mut c, Action::FocusColumnFirst);
+        act(&mut c, Action::ConsumeWindowIntoColumn);
+        act(&mut c, Action::ConsumeWindowIntoColumn);
+        act(&mut c, Action::MoveWindow(Direction::Down));
+        assert!(focus_is(&c, 11));
+        assert_eq!(rect_of(&c, 12).y(), 0);
+        apply(&mut c, Command::WindowUnmapped(ExternalKey::new(11)));
+        assert!(focus_is(&c, 13));
+    }
+
+    #[test]
+    fn focusing_left_returns_to_the_window_last_focused_in_that_column() {
+        let mut c = core_with(CoreConfig::new(4), 3);
+        act(&mut c, Action::FocusColumnFirst);
+        act(&mut c, Action::ConsumeWindowIntoColumn); // 列 [11, 12] と 13
+        act(&mut c, Action::FocusDirection(Direction::Down));
+        assert!(focus_is(&c, 12));
+        act(&mut c, Action::FocusDirection(Direction::Right));
+        assert!(focus_is(&c, 13));
+        // 幾何の規則なら（中心間の距離が同じで）11 になるが、列の規則では最後にフォーカスした 12。
+        act(&mut c, Action::FocusDirection(Direction::Left));
+        assert!(focus_is(&c, 12));
+    }
+
+    #[test]
+    fn moving_a_window_down_at_the_bottom_of_a_stack_changes_nothing() {
+        let mut c = core_with(CoreConfig::new(4), 2);
+        act(&mut c, Action::FocusColumnFirst);
+        act(&mut c, Action::ConsumeWindowIntoColumn); // 列 [11, 12]、フォーカス 11
+        act(&mut c, Action::FocusDirection(Direction::Down));
+        let before = c.snapshot();
+        let applied = c
+            .apply(Command::Action(Action::MoveWindow(Direction::Down)))
+            .expect("apply ok");
+        assert!(applied.effects.is_empty());
+        assert_eq!(c.snapshot(), before);
+        act(&mut c, Action::MoveWindow(Direction::Up));
+        assert_eq!(rect_of(&c, 12).y(), 0);
+        assert_eq!(rect_of(&c, 11).y(), 300);
+        let before = c.snapshot();
+        c.apply(Command::Action(Action::MoveWindow(Direction::Up)))
+            .expect("apply ok");
+        assert_eq!(c.snapshot(), before);
+    }
 }
