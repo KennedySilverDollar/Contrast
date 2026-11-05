@@ -4,7 +4,9 @@ use std::fmt;
 use std::time::Duration;
 
 use smithay::{
+    backend::egl::EGLDevice,
     backend::renderer::{
+        ImportDma,
         damage::OutputDamageTracker,
         element::{
             Kind, render_elements, solid::SolidColorRenderElement,
@@ -14,9 +16,21 @@ use smithay::{
     },
     desktop::space::SpaceRenderElements,
     output::Output,
+    wayland::dmabuf::{DmabufFeedback, DmabufFeedbackBuilder},
 };
 
 use crate::state::Contrast;
+
+/// linux-dmabuf の既定のフィードバック: 描画デバイス（`renderer` の EGL デバイスの render node）と、
+/// レンダラーが受け付けるフォーマット。デバイスを特定できなければ `None`（v3 で公開する）。
+pub fn dmabuf_feedback(renderer: &GlesRenderer) -> Option<DmabufFeedback> {
+    let device = EGLDevice::device_for_display(renderer.egl_context().display()).ok()?;
+    let node = device.try_get_render_node().ok().flatten()?;
+    let formats = renderer.dmabuf_formats();
+    DmabufFeedbackBuilder::new(node.dev_id(), formats.iter().copied())
+        .build()
+        .ok()
+}
 
 /// 描画の失敗。バックエンド（winit / DRM）が受けて、ログに出すか、フレームを諦めるかを決める。
 #[derive(Debug)]

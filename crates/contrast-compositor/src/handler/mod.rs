@@ -7,9 +7,12 @@ mod xdg_shell;
 pub use decoration::fmt_id;
 
 use smithay::{
-    backend::renderer::utils::on_commit_buffer_handler,
-    delegate_compositor, delegate_data_device, delegate_output, delegate_primary_selection,
-    delegate_seat, delegate_shm,
+    backend::{
+        allocator::{Buffer, dmabuf::Dmabuf},
+        renderer::utils::on_commit_buffer_handler,
+    },
+    delegate_compositor, delegate_data_device, delegate_dmabuf, delegate_output,
+    delegate_primary_selection, delegate_seat, delegate_shm,
     input::{Seat, SeatHandler, SeatState, pointer::CursorImageStatus},
     reexports::wayland_server::{
         Client, Resource,
@@ -21,6 +24,7 @@ use smithay::{
             CompositorClientState, CompositorHandler, CompositorState, get_parent,
             is_sync_subsurface,
         },
+        dmabuf::{DmabufGlobal, DmabufHandler, DmabufState, ImportNotifier},
         output::OutputHandler,
         selection::{
             SelectionHandler,
@@ -128,3 +132,32 @@ delegate_seat!(Contrast);
 delegate_data_device!(Contrast);
 delegate_primary_selection!(Contrast);
 delegate_output!(Contrast);
+
+impl DmabufHandler for Contrast {
+    fn dmabuf_state(&mut self) -> &mut DmabufState {
+        &mut self.dmabuf_state
+    }
+
+    fn dmabuf_imported(
+        &mut self,
+        _global: &DmabufGlobal,
+        dmabuf: Dmabuf,
+        notifier: ImportNotifier,
+    ) {
+        let imported = match self.dmabuf_importer.as_mut() {
+            Some(import) => import(&dmabuf),
+            None => false,
+        };
+        if imported {
+            tracing::info!(format = ?dmabuf.format(), size = ?dmabuf.size(), "dmabuf: imported");
+            if notifier.successful::<Contrast>().is_err() {
+                tracing::debug!("dmabuf: the client is gone");
+            }
+        } else {
+            tracing::warn!(format = ?dmabuf.format(), size = ?dmabuf.size(), "dmabuf: import failed");
+            notifier.failed();
+        }
+    }
+}
+
+delegate_dmabuf!(Contrast);

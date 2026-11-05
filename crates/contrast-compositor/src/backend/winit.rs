@@ -1,8 +1,10 @@
 //! winit バックエンド: ホストの窓を 1 つの出力として扱う。
 
+use std::{cell::RefCell, rc::Rc};
+
 use smithay::{
     backend::{
-        renderer::{damage::OutputDamageTracker, gles::GlesRenderer},
+        renderer::{ImportDma, damage::OutputDamageTracker, gles::GlesRenderer},
         winit::{self, WinitEvent, WinitGraphicsBackend},
     },
     output::{Mode, Output, PhysicalProperties, Subpixel},
@@ -23,10 +25,27 @@ pub fn init_winit(
     event_loop: &mut EventLoop<Contrast>,
     state: &mut Contrast,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let (mut backend, winit): (WinitGraphicsBackend<GlesRenderer>, _) = winit::init()?;
+    let (backend, winit): (WinitGraphicsBackend<GlesRenderer>, _) = winit::init()?;
+    // dmabuf のインポートはレンダラーが要るので、描画のコールバックと共有する。
+    let backend = Rc::new(RefCell::new(backend));
+    let (size, formats, feedback) = {
+        let mut b = backend.borrow_mut();
+        let formats: Vec<_> = b.renderer().dmabuf_formats().iter().copied().collect();
+        let feedback = crate::render::dmabuf_feedback(b.renderer());
+        (b.window_size(), formats, feedback)
+    };
+    let importer = backend.clone();
+    state.enable_dmabuf(
+        formats,
+        feedback,
+        Box::new(move |dmabuf| match importer.try_borrow_mut() {
+            Ok(mut b) => b.renderer().import_dmabuf(dmabuf, None).is_ok(),
+            Err(_) => false,
+        }),
+    );
 
     let mode = Mode {
-        size: backend.window_size(),
+        size,
         refresh: REFRESH,
     };
     let output = Output::new(
@@ -79,6 +98,9 @@ pub fn init_winit(
             }
             WinitEvent::Input(event) => state.process_input_event(event),
             WinitEvent::Redraw => {
+                let Ok(mut backend) = backend.try_borrow_mut() else {
+                    return;
+                };
                 if let Err(e) = render_winit(state, &mut backend, &output, &mut damage_tracker) {
                     tracing::error!("render: {e}, stopping");
                     state.loop_signal.stop();

@@ -12,7 +12,8 @@
 //!   active に戻れば再開する。libseat への応答（disable の ack）は `LibSeatSessionNotifier` が行う。
 //! - modeset の失敗は原因つきのエラー（終了コード 1）にする。
 //!
-//! 未対応: dmabuf（wl_shm のクライアントだけ）、ホットプラグ、複数出力、スケール、クライアントのカーソル画像。
+//! dmabuf はクライアントのバッファを描画してから flip する（direct scanout はしない）。
+//! 未対応: ホットプラグ、複数出力、スケール、クライアントのカーソル画像。
 
 use std::cell::RefCell;
 use std::fmt;
@@ -36,6 +37,7 @@ use smithay::backend::{
     egl::{EGLContext, EGLDisplay},
     libinput::{LibinputInputBackend, LibinputSessionInterface},
     renderer::{
+        ImportDma,
         element::{Kind, solid::SolidColorBuffer, solid::SolidColorRenderElement},
         gles::GlesRenderer,
     },
@@ -456,6 +458,33 @@ pub fn init(
     // ここから先の失敗は、guard の Drop が GPU 資源を片付ける。
     let guard = DrmGuard { drm: drm.clone() };
 
+    // linux-dmabuf: レンダラーが受け付けるフォーマットで公開し、インポートはレンダラーで試す。
+    let (formats, feedback): (Vec<_>, _) = drm
+        .try_borrow()
+        .ok()
+        .and_then(|d| {
+            let r = d.gpu.as_ref()?.renderer.as_ref()?;
+            Some((
+                r.dmabuf_formats().iter().copied().collect(),
+                crate::render::dmabuf_feedback(r),
+            ))
+        })
+        .unwrap_or_default();
+    let importer = drm.clone();
+    state.enable_dmabuf(
+        formats,
+        feedback,
+        Box::new(move |dmabuf| {
+            let Ok(mut d) = importer.try_borrow_mut() else {
+                return false;
+            };
+            match d.gpu.as_mut().and_then(|g| g.renderer.as_mut()) {
+                Some(r) => r.import_dmabuf(dmabuf, None).is_ok(),
+                None => false,
+            }
+        }),
+    );
+
     // VT 切り替え: キー処理が `pending_vt` を立てると、この関数が呼ばれる。
     let mut vt_session = session;
     state.vt_switch = Some(Box::new(move |vt| {
@@ -531,7 +560,6 @@ pub fn init(
             .map_err(|e| DrmError::EventLoop(e.to_string()))?;
     }
 
-    tracing::info!("drm: dmabuf is not supported, wl_shm clients only");
     center_pointer(state, &output);
     {
         let shared = drm.clone();

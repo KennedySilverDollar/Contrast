@@ -3,7 +3,10 @@
 use std::{ffi::OsString, rc::Rc, sync::Arc};
 
 use smithay::{
-    backend::renderer::element::solid::SolidColorBuffer,
+    backend::{
+        allocator::{Format, dmabuf::Dmabuf},
+        renderer::element::solid::SolidColorBuffer,
+    },
     desktop::{PopupManager, Space, Window},
     input::{Seat, SeatState, keyboard::Keycode},
     reexports::{
@@ -15,6 +18,7 @@ use smithay::{
     },
     wayland::{
         compositor::{CompositorClientState, CompositorState},
+        dmabuf::{DmabufFeedback, DmabufGlobal, DmabufState},
         output::OutputManagerState,
         selection::{data_device::DataDeviceState, primary_selection::PrimarySelectionState},
         shell::{
@@ -75,6 +79,12 @@ pub struct Contrast {
     pub layer_focus: Option<smithay::reexports::wayland_server::protocol::wl_surface::WlSurface>,
     pub popups: PopupManager,
     pub seat: Seat<Self>,
+    /// linux-dmabuf の状態。グローバルはレンダラーができてから `enable_dmabuf` で作る。
+    pub dmabuf_state: DmabufState,
+    /// 公開した linux-dmabuf のグローバル（`enable_dmabuf` の後）。
+    pub dmabuf_global: Option<DmabufGlobal>,
+    /// クライアントの dmabuf をレンダラーにインポートできるか試す関数（バックエンドが入れる）。
+    pub dmabuf_importer: Option<Box<dyn FnMut(&Dmabuf) -> bool>>,
     /// VT を切り替える関数（DRM バックエンドだけが入れる）。キーボードをコンポジタが持つので、これが無いと VT を移れない。
     pub vt_switch: Option<Box<dyn FnMut(i32)>>,
     /// キー処理の中で見つかった VT 切り替えの要求（キー処理が終わってから実行する）。
@@ -138,9 +148,39 @@ impl Contrast {
             layer_focus: None,
             popups: PopupManager::default(),
             seat,
+            dmabuf_state: DmabufState::new(),
+            dmabuf_global: None,
+            dmabuf_importer: None,
             vt_switch: None,
             pending_vt: None,
         }
+    }
+
+    /// zwp_linux_dmabuf_v1 を `formats`（レンダラーが受け付けるもの）で公開する。`importer` は、バッファがレンダラーに
+    /// インポートできるかを試す。できなければクライアントにエラーを返す。
+    pub fn enable_dmabuf(
+        &mut self,
+        formats: impl IntoIterator<Item = Format>,
+        feedback: Option<DmabufFeedback>,
+        importer: Box<dyn FnMut(&Dmabuf) -> bool>,
+    ) {
+        let formats: Vec<Format> = formats.into_iter().collect();
+        tracing::info!(
+            formats = formats.len(),
+            feedback = feedback.is_some(),
+            "dmabuf: enabled"
+        );
+        self.dmabuf_importer = Some(importer);
+        // v4（フィードバックつき）は、クライアントの Mesa が描画デバイスを知るのに要る。無ければ v3。
+        let global = match &feedback {
+            Some(f) => self
+                .dmabuf_state
+                .create_global_with_default_feedback::<Self>(&self.display_handle, f),
+            None => self
+                .dmabuf_state
+                .create_global::<Self>(&self.display_handle, formats),
+        };
+        self.dmabuf_global = Some(global);
     }
 
     /// 空いている `wayland-N` でソケットを開き、Display と一緒にイベントループへ入れる。
