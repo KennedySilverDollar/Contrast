@@ -9,6 +9,8 @@
     missing_docs,
     reason = "仕様テストは失敗＝パニックでよい。本体の lint は緩めない"
 )]
+#[cfg(feature = "invariants")]
+mod spec_core_scrolling;
 mod spec_geometry;
 mod spec_id;
 
