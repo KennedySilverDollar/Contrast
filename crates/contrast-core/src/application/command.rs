@@ -1,7 +1,9 @@
 //! core への入力: `Command`、`Action`、`Direction`。
 
+use crate::domain::column::ColumnWidth;
 use crate::domain::geometry::Rect;
 use crate::domain::id::{ExternalKey, WorkspaceIndex};
+use crate::domain::insets::Insets;
 use crate::domain::output::OutputName;
 use crate::domain::window::WindowMeta;
 
@@ -26,6 +28,13 @@ pub enum Command {
         key: ExternalKey,
         /// 新しい論理矩形。
         geometry: Rect,
+    },
+    /// 出力の作業領域の余白が変わった（D31）。
+    OutputInsetsChanged {
+        /// シェル側の識別子。
+        key: ExternalKey,
+        /// 新しい余白。
+        insets: Insets,
     },
     /// トップレベル窓が現れた。
     WindowMapped {
@@ -69,6 +78,24 @@ pub enum Action {
     ToggleFullscreen,
     /// フォーカス窓に閉じる要求を出す（D14）。
     CloseFocused,
+    /// 最初の列へフォーカスを移す（`Scrolling` のみ、D42）。
+    FocusColumnFirst,
+    /// 最後の列へフォーカスを移す（`Scrolling` のみ、D42）。
+    FocusColumnLast,
+    /// フォーカス列を最初の位置へ移す（`Scrolling` のみ、D42）。
+    MoveColumnToFirst,
+    /// フォーカス列を最後の位置へ移す（`Scrolling` のみ、D42）。
+    MoveColumnToLast,
+    /// 右隣の列の先頭の窓を、フォーカス列の最下段へ移す（`Scrolling` のみ、D43）。
+    ConsumeWindowIntoColumn,
+    /// フォーカス窓を、右隣の新しい列へ出す（`Scrolling` のみ、D43）。
+    ExpelWindowFromColumn,
+    /// フォーカス列の幅を、次のプリセットへ変える（`Scrolling` のみ、D44）。
+    SwitchPresetColumnWidth,
+    /// フォーカス列を最大化する。最大化中なら元の幅に戻す（`Scrolling` のみ、D44）。
+    MaximizeColumn,
+    /// フォーカス列の幅を指定する（`Scrolling` のみ、D44）。
+    SetColumnWidth(ColumnWidth),
 }
 
 /// 方向。

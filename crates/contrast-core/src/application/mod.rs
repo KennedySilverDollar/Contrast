@@ -9,4 +9,5 @@ mod diff;
 pub mod effect;
 pub mod engine;
 mod handlers;
+pub mod scrolling;
 pub mod view;

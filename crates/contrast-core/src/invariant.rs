@@ -1,7 +1,9 @@
-//! 不変条件 I1〜I6 の検査（テストと Kani から呼ぶ）。I7・I8 は状態機械テストで確かめる。
+//! 不変条件 I1〜I6・I9〜I11 の検査（テストから呼ぶ）。I7・I8 は状態機械テストで確かめる。
 
 use alloc::vec::Vec;
 
+use crate::application::scrolling;
+use crate::domain::column::LayoutMode;
 use crate::domain::id::{OutputId, WindowId, WorkspaceIndex};
 use crate::domain::state::State;
 use crate::domain::window::WindowState;
@@ -22,6 +24,12 @@ pub enum InvariantViolation {
     I5(WindowId),
     /// I6: ExternalKey と ID の対応が全単射でない。
     I6,
+    /// I9: 同じワークスペースに Fullscreen の窓が 2 枚以上ある。
+    I9(WorkspaceIndex),
+    /// I10: `Scrolling` で、Tiled の窓がちょうど 1 つの列に属していない、空の列がある、または列の幅が 1 未満。
+    I10(WorkspaceIndex),
+    /// I11: `Scrolling` で、フォーカスが Tiled の窓にあるのに、その列が D39 の条件を満たしていない。
+    I11(WindowId),
 }
 
 /// I7 の比較用の状態の複製。
@@ -35,7 +43,7 @@ impl StateSnapshot {
     }
 }
 
-/// I1〜I6 を順に検査し、最初の違反を返す。
+/// I1〜I6、I9〜I11 を順に検査し、最初の違反を返す。
 ///
 /// # Errors
 /// 違反があればその種類。
@@ -44,7 +52,10 @@ pub fn check(state: &State) -> Result<(), InvariantViolation> {
     check_i3(state)?;
     check_i4(state)?;
     check_i5(state)?;
-    check_i6(state)
+    check_i6(state)?;
+    check_i9(state)?;
+    check_i10(state)?;
+    check_i11(state)
 }
 
 /// I1・I2: 所属と順序列の整合。
@@ -71,10 +82,8 @@ fn check_i1_i2(state: &State) -> Result<(), InvariantViolation> {
             .iter()
             .filter(|ws| ws.windows.contains(&w.id))
             .count();
-        let in_own = state
-            .workspace(w.workspace)
-            .is_some_and(|ws| ws.windows.contains(&w.id));
-        if count != 1 || !in_own {
+        // 1 つのワークスペースにだけあり、それが `w.workspace` であること（後者は上の順序列の検査が保証する）。
+        if count != 1 {
             return Err(InvariantViolation::I1(w.id));
         }
     }
@@ -104,7 +113,10 @@ fn check_i4(state: &State) -> Result<(), InvariantViolation> {
 /// I5: 表示中の Tiled 窓は作業領域内に収まり、互いに重ならない。
 fn check_i5(state: &State) -> Result<(), InvariantViolation> {
     for o in state.outputs.values() {
-        let area = o.work_area();
+        // 作業領域が作れない出力は handler が拒否するので、ここには来ない。
+        let Ok(area) = o.work_area() else {
+            continue;
+        };
         let Some(ws) = state.workspace(o.shown) else {
             continue;
         };
@@ -119,7 +131,12 @@ fn check_i5(state: &State) -> Result<(), InvariantViolation> {
             let Some(rect) = w.rect else {
                 return Err(InvariantViolation::I5(*id));
             };
-            let inside = area.intersect(&rect) == Some(rect);
+            // Scrolling（D47）: 縦だけが作業領域に収まればよい。横はビューの外に出てよい。
+            let inside = if state.layout.mode == LayoutMode::Scrolling {
+                rect.y() >= area.y() && rect.bottom() <= area.bottom()
+            } else {
+                area.intersect(&rect) == Some(rect)
+            };
             let overlaps = placed.iter().any(|(_, r)| r.intersect(&rect).is_some());
             if !inside || overlaps {
                 return Err(InvariantViolation::I5(*id));
@@ -148,5 +165,516 @@ fn check_i6(state: &State) -> Result<(), InvariantViolation> {
         Ok(())
     } else {
         Err(InvariantViolation::I6)
+    }
+}
+
+/// I9: 同じワークスペースの Fullscreen の窓は高々 1 枚（D26）。
+fn check_i9(state: &State) -> Result<(), InvariantViolation> {
+    for ws in &state.workspaces {
+        let fullscreen = ws
+            .windows
+            .iter()
+            .filter_map(|id| state.windows.get(id))
+            .filter(|w| w.state == WindowState::Fullscreen)
+            .count();
+        if fullscreen > 1 {
+            return Err(InvariantViolation::I9(ws.index));
+        }
+    }
+    Ok(())
+}
+
+/// I10: `Scrolling` では、各 Tiled の窓がちょうど 1 つの列に属し、空の列がなく、列の幅は 1 以上。
+fn check_i10(state: &State) -> Result<(), InvariantViolation> {
+    if state.layout.mode != LayoutMode::Scrolling {
+        return Ok(());
+    }
+    for ws in &state.workspaces {
+        let bad_column = ws
+            .columns
+            .iter()
+            .any(|col| col.windows.is_empty() || !column_width_ok(col.width));
+        let tiled_ok = ws.windows.iter().all(|id| {
+            let tiled = state
+                .windows
+                .get(id)
+                .is_some_and(|w| w.state == WindowState::Tiled);
+            let count = ws.columns.iter().filter(|c| c.windows.contains(id)).count();
+            if tiled { count == 1 } else { count == 0 }
+        });
+        let in_columns: usize = ws.columns.iter().map(|c| c.windows.len()).sum();
+        let tiled_total = ws
+            .windows
+            .iter()
+            .filter(|id| {
+                state
+                    .windows
+                    .get(id)
+                    .is_some_and(|w| w.state == WindowState::Tiled)
+            })
+            .count();
+        if bad_column || !tiled_ok || in_columns != tiled_total {
+            return Err(InvariantViolation::I10(ws.index));
+        }
+    }
+    Ok(())
+}
+
+/// 列の幅が 1 以上か（`Fixed` が 1 未満でない）。
+fn column_width_ok(width: crate::domain::column::ColumnWidth) -> bool {
+    !matches!(width, crate::domain::column::ColumnWidth::Fixed(px) if px < 1)
+}
+
+/// I11: `Scrolling` で、フォーカスが Tiled の窓にあるとき、その列は D39 の条件を満たす（ビューがそれ以上動かない）。
+fn check_i11(state: &State) -> Result<(), InvariantViolation> {
+    if state.layout.mode != LayoutMode::Scrolling {
+        return Ok(());
+    }
+    let Some(id) = state.focus else {
+        return Ok(());
+    };
+    let Some(w) = state.windows.get(&id) else {
+        return Ok(());
+    };
+    if w.state != WindowState::Tiled {
+        return Ok(());
+    }
+    let Some(ws) = state.workspace(w.workspace) else {
+        return Ok(());
+    };
+    let Some(area_width) = scrolling::shown_area_width(state, w.workspace) else {
+        return Ok(());
+    };
+    let layout = scrolling::column_layout(ws, area_width);
+    let ok = ws
+        .column_of(id)
+        .and_then(|(c, _)| {
+            let (widths, lefts, total) = layout.as_ref()?;
+            let (left, width) = (lefts.get(c)?, widths.get(c)?);
+            Some(scrolling::adjust_view(ws.view_x, *left, *width, area_width, *total) == ws.view_x)
+        })
+        .unwrap_or(false);
+    if ok {
+        Ok(())
+    } else {
+        Err(InvariantViolation::I11(id))
+    }
+}
+
+/// 壊した State が、その不変条件の variant を返すことの確認（I1〜I11）。
+#[cfg(test)]
+mod tests {
+    use super::{InvariantViolation, check};
+    use crate::domain::column::{Column, ColumnWidth, LayoutMode, Ratio};
+    use crate::domain::geometry::Rect;
+    use crate::domain::id::{ExternalKey, IdKind, OutputId, WindowId, WorkspaceIndex};
+    use crate::domain::insets::Insets;
+    use crate::domain::output::{Output, OutputName};
+    use crate::domain::state::State;
+    use crate::domain::window::{Window, WindowMeta, WindowState};
+
+    /// 試験用の作業領域。
+    fn area() -> Option<Rect> {
+        Rect::new(0, 0, 100, 100)
+    }
+
+    /// 窓 `raw` を Tiled・ワークスペース 0・作業領域全体で足す（キーも登録する）。
+    fn add_window(state: &mut State, raw: u64, window_state: WindowState) -> Option<()> {
+        let id = WindowId::from_raw(raw);
+        let index = WorkspaceIndex::new(0);
+        let mut w = Window::new(id, WindowMeta::default(), window_state, index);
+        if window_state == WindowState::Tiled {
+            w.rect = area();
+        }
+        state.windows.insert(id, w);
+        state.workspace_mut(index)?.push_window(id);
+        state.window_keys.insert(ExternalKey::new(raw), id).ok()
+    }
+
+    /// 全不変条件を満たす State: 出力 1 つがワークスペース 0 を表示し、窓 1 が Tiled でフォーカス。
+    fn valid() -> Option<State> {
+        let mut state = State::new(2);
+        let oid = OutputId::from_raw(1);
+        let output = Output {
+            id: oid,
+            name: OutputName::new("test"),
+            geometry: area()?,
+            shown: WorkspaceIndex::new(0),
+            insets: Insets::default(),
+        };
+        state.outputs.insert(oid, output);
+        state.output_keys.insert(ExternalKey::new(1000), oid).ok()?;
+        add_window(&mut state, 1, WindowState::Tiled)?;
+        state.focus = Some(WindowId::from_raw(1));
+        Some(state)
+    }
+
+    /// 壊す前の State は検査を通る。
+    #[test]
+    fn valid_state_passes() -> Result<(), &'static str> {
+        let state = valid().ok_or("setup")?;
+        assert_eq!(check(&state), Ok(()));
+        Ok(())
+    }
+
+    /// I1: どのワークスペースの順序列にもない窓。
+    #[test]
+    fn detects_i1() -> Result<(), &'static str> {
+        let mut state = valid().ok_or("setup")?;
+        state
+            .workspace_mut(WorkspaceIndex::new(0))
+            .ok_or("ws")?
+            .windows
+            .clear();
+        assert_eq!(
+            check(&state),
+            Err(InvariantViolation::I1(WindowId::from_raw(1)))
+        );
+        Ok(())
+    }
+
+    /// I2: 順序列の重複。
+    #[test]
+    fn detects_i2() -> Result<(), &'static str> {
+        let mut state = valid().ok_or("setup")?;
+        let index = WorkspaceIndex::new(0);
+        state
+            .workspace_mut(index)
+            .ok_or("ws")?
+            .windows
+            .push(WindowId::from_raw(1));
+        assert_eq!(check(&state), Err(InvariantViolation::I2(index)));
+        Ok(())
+    }
+
+    /// I3: 表示ワークスペースが範囲外。
+    #[test]
+    fn detects_i3() -> Result<(), &'static str> {
+        let mut state = valid().ok_or("setup")?;
+        let oid = OutputId::from_raw(1);
+        state.outputs.get_mut(&oid).ok_or("output")?.shown = WorkspaceIndex::new(9);
+        assert_eq!(check(&state), Err(InvariantViolation::I3(oid)));
+        Ok(())
+    }
+
+    /// I3: 2 つの出力が同じワークスペースを表示している。
+    #[test]
+    fn detects_i3_when_two_outputs_share_a_workspace() -> Result<(), &'static str> {
+        let mut state = valid().ok_or("setup")?;
+        let second = OutputId::from_raw(2);
+        let output = Output {
+            id: second,
+            name: OutputName::new("second"),
+            geometry: area().ok_or("area")?,
+            shown: WorkspaceIndex::new(0),
+            insets: Insets::default(),
+        };
+        state.outputs.insert(second, output);
+        state
+            .output_keys
+            .insert(ExternalKey::new(1001), second)
+            .map_err(|_| "key")?;
+        assert_eq!(check(&state), Err(InvariantViolation::I3(second)));
+        Ok(())
+    }
+
+    /// I4: フォーカスが存在しない窓を指す。
+    #[test]
+    fn detects_i4() -> Result<(), &'static str> {
+        let mut state = valid().ok_or("setup")?;
+        let ghost = WindowId::from_raw(99);
+        state.focus = Some(ghost);
+        assert_eq!(check(&state), Err(InvariantViolation::I4(ghost)));
+        Ok(())
+    }
+
+    /// I5: Tiled 窓が作業領域からはみ出す。
+    #[test]
+    fn detects_i5() -> Result<(), &'static str> {
+        let mut state = valid().ok_or("setup")?;
+        let id = WindowId::from_raw(1);
+        state.windows.get_mut(&id).ok_or("window")?.rect = Rect::new(0, 0, 200, 100);
+        assert_eq!(check(&state), Err(InvariantViolation::I5(id)));
+        Ok(())
+    }
+
+    /// I6: 窓のない ID がキー表にある。
+    #[test]
+    fn detects_i6() -> Result<(), &'static str> {
+        let mut state = valid().ok_or("setup")?;
+        state
+            .window_keys
+            .insert(ExternalKey::new(2), WindowId::from_raw(77))
+            .map_err(|_| "key")?;
+        assert_eq!(check(&state), Err(InvariantViolation::I6));
+        Ok(())
+    }
+
+    /// I9: 同じワークスペースに Fullscreen の窓が 2 枚。
+    #[test]
+    fn detects_i9() -> Result<(), &'static str> {
+        let mut state = valid().ok_or("setup")?;
+        state
+            .windows
+            .get_mut(&WindowId::from_raw(1))
+            .ok_or("window")?
+            .state = WindowState::Fullscreen;
+        add_window(&mut state, 2, WindowState::Fullscreen).ok_or("setup")?;
+        assert_eq!(
+            check(&state),
+            Err(InvariantViolation::I9(WorkspaceIndex::new(0)))
+        );
+        Ok(())
+    }
+
+    /// Scrolling の State: `valid()` を、窓 1 が幅 1/1 の 1 列に入っている状態にしたもの。
+    fn scrolling_valid() -> Option<State> {
+        let mut state = valid()?;
+        state.layout.mode = LayoutMode::Scrolling;
+        let ws = state.workspace_mut(WorkspaceIndex::new(0))?;
+        ws.columns.push(Column::single(
+            WindowId::from_raw(1),
+            ColumnWidth::Proportion(Ratio::FULL),
+        ));
+        Some(state)
+    }
+
+    /// Scrolling の健全な State は検査を通る。
+    #[test]
+    fn valid_scrolling_state_passes() -> Result<(), &'static str> {
+        let state = scrolling_valid().ok_or("setup")?;
+        assert_eq!(check(&state), Ok(()));
+        Ok(())
+    }
+
+    /// I5（Scrolling）: 横にビューの外へ出ていてもよい。
+    #[test]
+    fn scrolling_allows_rects_outside_the_view_horizontally() -> Result<(), &'static str> {
+        let mut state = scrolling_valid().ok_or("setup")?;
+        state
+            .windows
+            .get_mut(&WindowId::from_raw(1))
+            .ok_or("window")?
+            .rect = Rect::new(-50, 0, 100, 100);
+        assert_eq!(check(&state), Ok(()));
+        Ok(())
+    }
+
+    /// I5（Scrolling）: 縦が作業領域からはみ出す。
+    #[test]
+    fn detects_i5_scrolling_vertical_overflow() -> Result<(), &'static str> {
+        let mut state = scrolling_valid().ok_or("setup")?;
+        let id = WindowId::from_raw(1);
+        state.windows.get_mut(&id).ok_or("window")?.rect = Rect::new(0, 10, 100, 100);
+        assert_eq!(check(&state), Err(InvariantViolation::I5(id)));
+        Ok(())
+    }
+
+    /// I5（Scrolling）: Tiled の窓が重なる。
+    #[test]
+    fn detects_i5_scrolling_overlap() -> Result<(), &'static str> {
+        let mut state = scrolling_valid().ok_or("setup")?;
+        add_window(&mut state, 2, WindowState::Tiled).ok_or("setup")?;
+        state
+            .workspace_mut(WorkspaceIndex::new(0))
+            .ok_or("ws")?
+            .columns
+            .push(Column::single(
+                WindowId::from_raw(2),
+                ColumnWidth::Proportion(Ratio::FULL),
+            ));
+        assert_eq!(
+            check(&state),
+            Err(InvariantViolation::I5(WindowId::from_raw(2)))
+        );
+        Ok(())
+    }
+
+    /// I10: Tiled の窓がどの列にもない。
+    #[test]
+    fn detects_i10_when_a_tiled_window_has_no_column() -> Result<(), &'static str> {
+        let mut state = scrolling_valid().ok_or("setup")?;
+        let index = WorkspaceIndex::new(0);
+        state.workspace_mut(index).ok_or("ws")?.columns.clear();
+        assert_eq!(check(&state), Err(InvariantViolation::I10(index)));
+        Ok(())
+    }
+
+    /// I10: 窓が 2 つの列にある。
+    #[test]
+    fn detects_i10_when_a_window_is_in_two_columns() -> Result<(), &'static str> {
+        let mut state = scrolling_valid().ok_or("setup")?;
+        let index = WorkspaceIndex::new(0);
+        state
+            .workspace_mut(index)
+            .ok_or("ws")?
+            .columns
+            .push(Column::single(
+                WindowId::from_raw(1),
+                ColumnWidth::Proportion(Ratio::FULL),
+            ));
+        assert_eq!(check(&state), Err(InvariantViolation::I10(index)));
+        Ok(())
+    }
+
+    /// I10: 空の列がある。
+    #[test]
+    fn detects_i10_when_a_column_is_empty() -> Result<(), &'static str> {
+        let mut state = scrolling_valid().ok_or("setup")?;
+        let index = WorkspaceIndex::new(0);
+        let ws = state.workspace_mut(index).ok_or("ws")?;
+        ws.columns.push(Column {
+            windows: alloc::vec::Vec::new(),
+            width: ColumnWidth::Proportion(Ratio::FULL),
+            last_focused: None,
+            restore_width: None,
+        });
+        assert_eq!(check(&state), Err(InvariantViolation::I10(index)));
+        Ok(())
+    }
+
+    /// I10: 列の幅が 1 未満。
+    #[test]
+    fn detects_i10_when_a_column_width_is_below_one() -> Result<(), &'static str> {
+        let mut state = scrolling_valid().ok_or("setup")?;
+        let index = WorkspaceIndex::new(0);
+        let ws = state.workspace_mut(index).ok_or("ws")?;
+        ws.columns.first_mut().ok_or("column")?.width = ColumnWidth::Fixed(0);
+        assert_eq!(check(&state), Err(InvariantViolation::I10(index)));
+        Ok(())
+    }
+
+    /// I10: Floating の窓が列にいる。
+    #[test]
+    fn detects_i10_when_a_floating_window_is_in_a_column() -> Result<(), &'static str> {
+        let mut state = scrolling_valid().ok_or("setup")?;
+        let index = WorkspaceIndex::new(0);
+        add_window(&mut state, 2, WindowState::Floating).ok_or("setup")?;
+        let ws = state.workspace_mut(index).ok_or("ws")?;
+        ws.columns
+            .first_mut()
+            .ok_or("column")?
+            .windows
+            .push(WindowId::from_raw(2));
+        assert_eq!(check(&state), Err(InvariantViolation::I10(index)));
+        Ok(())
+    }
+
+    /// I10 は Equal では検査しない（列は空のまま）。
+    #[test]
+    fn i10_is_ignored_in_equal_mode() -> Result<(), &'static str> {
+        let state = valid().ok_or("setup")?;
+        assert!(state.workspaces.iter().all(|ws| ws.columns.is_empty()));
+        assert_eq!(check(&state), Ok(()));
+        Ok(())
+    }
+
+    /// I11: フォーカス列が見える位置にビューがない。
+    #[test]
+    fn detects_i11_when_the_view_is_out_of_range() -> Result<(), &'static str> {
+        let mut state = scrolling_valid().ok_or("setup")?;
+        state
+            .workspace_mut(WorkspaceIndex::new(0))
+            .ok_or("ws")?
+            .view_x = 50;
+        assert_eq!(
+            check(&state),
+            Err(InvariantViolation::I11(WindowId::from_raw(1)))
+        );
+        Ok(())
+    }
+
+    /// I10: 列の窓が順序列にない（数は合っていても、Tiled の窓がどの列にもない）。
+    #[test]
+    fn detects_i10_when_a_column_holds_a_window_that_does_not_exist() -> Result<(), &'static str> {
+        let mut state = scrolling_valid().ok_or("setup")?;
+        let index = WorkspaceIndex::new(0);
+        let ws = state.workspace_mut(index).ok_or("ws")?;
+        ws.columns.clear();
+        ws.columns.push(Column::single(
+            WindowId::from_raw(99),
+            ColumnWidth::Proportion(Ratio::FULL),
+        ));
+        assert_eq!(check(&state), Err(InvariantViolation::I10(index)));
+        Ok(())
+    }
+
+    /// I6: 窓の対応表で、逆引きだけが食い違う（要素数は合い、窓の数とも合う）。
+    #[test]
+    fn detects_i6_when_only_the_reverse_lookup_is_wrong() -> Result<(), &'static str> {
+        let mut state = valid().ok_or("setup")?;
+        state
+            .window_keys
+            .corrupt_reverse(WindowId::from_raw(1), ExternalKey::new(500));
+        assert_eq!(check(&state), Err(InvariantViolation::I6));
+        Ok(())
+    }
+
+    /// 窓 `raw` をキーなしで足す（ワークスペース 0・Tiled）。
+    fn add_extra_window_without_key(state: &mut State, raw: u64) -> Option<()> {
+        let id = WindowId::from_raw(raw);
+        let index = WorkspaceIndex::new(0);
+        let mut w = Window::new(id, WindowMeta::default(), WindowState::Floating, index);
+        w.rect = None;
+        state.windows.insert(id, w);
+        state.workspace_mut(index)?.push_window(id);
+        Some(())
+    }
+
+    /// I6: 窓の数と対応の数は合うが、キーのない窓がある（別の ID のキーが余っている）。
+    #[test]
+    fn detects_i6_when_only_a_window_has_no_key() -> Result<(), &'static str> {
+        let mut state = valid().ok_or("setup")?;
+        add_extra_window_without_key(&mut state, 2).ok_or("setup")?;
+        state
+            .window_keys
+            .insert(ExternalKey::new(3), WindowId::from_raw(77))
+            .map_err(|_| "key")?;
+        assert_eq!(check(&state), Err(InvariantViolation::I6));
+        Ok(())
+    }
+
+    /// I6: 出力の対応表で、逆引きだけが食い違う。
+    #[test]
+    fn detects_i6_when_only_the_output_reverse_lookup_is_wrong() -> Result<(), &'static str> {
+        let mut state = valid().ok_or("setup")?;
+        state
+            .output_keys
+            .corrupt_reverse(OutputId::from_raw(1), ExternalKey::new(900));
+        assert_eq!(check(&state), Err(InvariantViolation::I6));
+        Ok(())
+    }
+
+    /// I6: 出力の対応が 1 件余る（数だけが合わない）。
+    #[test]
+    fn detects_i6_when_only_the_output_count_differs() -> Result<(), &'static str> {
+        let mut state = valid().ok_or("setup")?;
+        state
+            .output_keys
+            .insert(ExternalKey::new(1001), OutputId::from_raw(55))
+            .map_err(|_| "key")?;
+        assert_eq!(check(&state), Err(InvariantViolation::I6));
+        Ok(())
+    }
+
+    /// I6: 出力の数と対応の数は合うが、キーのない出力がある。
+    #[test]
+    fn detects_i6_when_only_an_output_has_no_key() -> Result<(), &'static str> {
+        let mut state = valid().ok_or("setup")?;
+        let second = OutputId::from_raw(2);
+        let output = Output {
+            id: second,
+            name: OutputName::new("second"),
+            geometry: area().ok_or("area")?,
+            shown: WorkspaceIndex::new(1),
+            insets: Insets::default(),
+        };
+        state.outputs.insert(second, output);
+        state
+            .output_keys
+            .insert(ExternalKey::new(1002), OutputId::from_raw(55))
+            .map_err(|_| "key")?;
+        assert_eq!(check(&state), Err(InvariantViolation::I6));
+        Ok(())
     }
 }

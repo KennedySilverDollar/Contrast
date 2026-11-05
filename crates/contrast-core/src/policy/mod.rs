@@ -87,3 +87,28 @@ impl PlacementContext<'_> {
         self.output_count
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn placement_context_returns_its_values() {
+        let ctx = PlacementContext::new(Some(WorkspaceIndex::new(2)), 7, 3);
+        assert_eq!(ctx.focused_workspace(), Some(WorkspaceIndex::new(2)));
+        assert_eq!(ctx.workspace_count(), 7);
+        assert_eq!(ctx.output_count(), 3);
+        let empty = PlacementContext::new(None, 4, 0);
+        assert_eq!(empty.focused_workspace(), None);
+        assert_eq!(empty.workspace_count(), 4);
+        assert_eq!(empty.output_count(), 0);
+    }
+
+    #[test]
+    fn placement_keeps_its_fields() {
+        let p = Placement::new(Some(WorkspaceIndex::new(1)), WindowState::Floating, false);
+        assert_eq!(p.workspace, Some(WorkspaceIndex::new(1)));
+        assert_eq!(p.state, WindowState::Floating);
+        assert!(!p.focus);
+    }
+}

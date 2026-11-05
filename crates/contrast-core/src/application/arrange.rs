@@ -1,14 +1,16 @@
 //! 再配置: 表示中ワークスペースの全窓の矩形を計算し直す。
 //!
 //! 守る不変条件:
-//! - I5 Tiled 窓は `Layout` に任せる（作業領域内・重なりなし）。
+//! - I5 Tiled 窓は `Layout` に任せる（作業領域内・重なりなし）。`Scrolling` は列から決める（縦だけが作業領域内、D47）。
 //! - D8 Floating 窓は要求サイズ（なければ作業領域の半分）を中央に置き、作業領域に収まるよう切り詰める。
-//! - D9 Fullscreen 窓は出力の論理矩形全体。
+//! - D9・D33 Fullscreen 窓は insets を無視した出力の論理矩形全体。
 //!
 //! 非表示のワークスペースの窓は最後の矩形を保つ。
 
 use alloc::vec::Vec;
 
+use crate::application::scrolling;
+use crate::domain::column::LayoutMode;
 use crate::domain::geometry::Rect;
 use crate::domain::id::WindowId;
 use crate::domain::state::State;
@@ -19,13 +21,12 @@ use crate::layout::Layout;
 /// 全出力の表示ワークスペースについて窓の矩形を計算し直す。
 ///
 /// # Errors
-/// Layout の失敗は `CoreError::Layout`、浮動矩形が i32 に収まらなければ `GeometryOverflow`。
+/// 作業領域が作れない・Layout の失敗は `CoreError::Layout`、浮動矩形が i32 に収まらなければ `GeometryOverflow`。
 pub fn arrange<L: Layout>(state: &mut State, layout: &L) -> Result<(), CoreError> {
-    let shown: Vec<_> = state
-        .outputs
-        .values()
-        .map(|o| (o.work_area(), o.geometry, o.shown))
-        .collect();
+    let mut shown = Vec::with_capacity(state.outputs.len());
+    for o in state.outputs.values() {
+        shown.push((o.work_area()?, o.geometry, o.shown));
+    }
     for (area, geometry, index) in shown {
         let ids: Vec<WindowId> = state
             .workspace(index)
@@ -41,11 +42,16 @@ pub fn arrange<L: Layout>(state: &mut State, layout: &L) -> Result<(), CoreError
                     .is_some_and(|w| w.state == WindowState::Tiled)
             })
             .collect();
-        let mut placed = Vec::with_capacity(tiled.len());
-        layout.arrange(area, &tiled, &mut placed)?;
-        for (id, rect) in placed {
-            if let Some(w) = state.windows.get_mut(&id) {
-                w.rect = Some(rect);
+        if state.layout.mode == LayoutMode::Scrolling {
+            // D38: Scrolling は `Layout` 型を使わず、列から矩形を決める（Floating・Fullscreen は下で既存どおり）。
+            scrolling::arrange_workspace(state, index, area)?;
+        } else {
+            let mut placed = Vec::with_capacity(tiled.len());
+            layout.arrange(area, &tiled, &mut placed)?;
+            for (id, rect) in placed {
+                if let Some(w) = state.windows.get_mut(&id) {
+                    w.rect = Some(rect);
+                }
             }
         }
         for id in ids {

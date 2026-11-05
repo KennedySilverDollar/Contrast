@@ -103,3 +103,18 @@ impl<'a> StateView<'a> {
             .collect()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::domain::state::State;
+
+    use super::StateView;
+
+    #[test]
+    fn workspace_count_is_the_number_of_workspaces() {
+        for n in [1_u8, 4, 9, 32] {
+            let state = State::new(n);
+            assert_eq!(StateView::new(&state).workspace_count(), n);
+        }
+    }
+}

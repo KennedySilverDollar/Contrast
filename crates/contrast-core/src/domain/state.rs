@@ -12,6 +12,7 @@
 use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
 
+use crate::domain::column::LayoutSettings;
 use crate::domain::id::{IdGen, IdKind, KeyMap, OutputId, WindowId, WorkspaceId, WorkspaceIndex};
 use crate::domain::output::Output;
 use crate::domain::window::Window;
@@ -41,6 +42,8 @@ pub struct State {
     pub output_ids: IdGen<OutputId>,
     /// 窓 ID の払い出し器。
     pub window_ids: IdGen<WindowId>,
+    /// 窓の並べ方と、スクロール列レイアウトの設定（`Core::new` が決め、以後変わらない）。
+    pub layout: LayoutSettings,
 }
 
 impl State {
@@ -63,6 +66,7 @@ impl State {
             window_keys: KeyMap::new(),
             output_ids: IdGen::new(),
             window_ids: IdGen::new(),
+            layout: LayoutSettings::default(),
         }
     }
 
