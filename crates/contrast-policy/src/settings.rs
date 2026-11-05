@@ -1,0 +1,170 @@
+//! 設定の値（`Settings`）。CDL を知らない。読み込み器（`ConfigLoader`）が作り、`Config` に入る。
+//!
+//! 組み込みの既定値は `Settings::builtin`。設定ファイルが無い・壊れているときはこれで動く。
+
+use crate::port::{Action, Mods};
+
+/// ワークスペース数の上限。
+pub const MAX_WORKSPACES: u8 = 32;
+
+/// 枠の太さの上限（px）。
+pub const MAX_BORDER_WIDTH: i32 = 256;
+
+/// キーバインドの `mod` が指す修飾キー。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ModKey {
+    /// Alt（既定。nested で動かすとき向け）。
+    #[default]
+    Alt,
+    /// Super / Logo。
+    Super,
+}
+
+impl ModKey {
+    /// `mod` を `Mods` にしたもの。
+    pub fn mods(self) -> Mods {
+        match self {
+            Self::Alt => Mods {
+                alt: true,
+                ..Mods::default()
+            },
+            Self::Super => Mods {
+                logo: true,
+                ..Mods::default()
+            },
+        }
+    }
+}
+
+/// キーの指定: 修飾キーの集合とキー名（xkb のキー名）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KeySpec {
+    /// 修飾キー。押されている修飾キーとちょうど一致したときだけ当たる。
+    pub mods: Mods,
+    /// キー名。比較は大文字小文字を区別しない。
+    pub keysym: String,
+}
+
+impl KeySpec {
+    /// 押されたキーに当たるか。キー名は大文字小文字を区別しない。
+    pub fn matches(&self, mods: Mods, keysym: &str) -> bool {
+        self.mods == mods && self.keysym.eq_ignore_ascii_case(keysym)
+    }
+}
+
+/// 1 つのキーバインド。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KeyBinding {
+    /// 当たるキー。
+    pub key: KeySpec,
+    /// 実行する操作。
+    pub action: Action,
+}
+
+/// 見た目の設定。色は RGBA（0.0〜1.0）。
+#[derive(Debug, Clone, PartialEq)]
+pub struct Appearance {
+    /// 枠の太さ（px、0 で枠なし）。
+    pub border_width: i32,
+    /// フォーカス窓の枠の色。
+    pub focus_color: [f32; 4],
+    /// フォーカス外の窓の枠の色。`None` なら描かない。
+    pub border_color: Option<[f32; 4]>,
+    /// 背景色。
+    pub background: [f32; 4],
+}
+
+/// 設定の値。
+#[derive(Debug, Clone, PartialEq)]
+pub struct Settings {
+    /// `mod` が指す修飾キー。
+    pub mod_key: ModKey,
+    /// 見た目。
+    pub appearance: Appearance,
+    /// ワークスペースの数（1〜`MAX_WORKSPACES`）。
+    pub workspaces: u8,
+    /// キーバインド（並びの順）。
+    pub keybinds: Vec<KeyBinding>,
+}
+
+/// 8 ビットの RGBA を 0.0〜1.0 にする。
+pub fn rgba8(c: [u8; 4]) -> [f32; 4] {
+    c.map(|v| f32::from(v) / 255.0)
+}
+
+impl Settings {
+    /// 組み込みの既定値。端末は `foot`。
+    pub fn builtin() -> Self {
+        Self::builtin_with_terminal("foot")
+    }
+
+    /// 組み込みの既定値。`terminal` は Alt+Return で起動するコマンド。
+    pub fn builtin_with_terminal(terminal: impl Into<String>) -> Self {
+        let alt = ModKey::Alt.mods();
+        let alt_shift = Mods { shift: true, ..alt };
+        let bind = |mods: Mods, key: &str, action: Action| KeyBinding {
+            key: KeySpec {
+                mods,
+                keysym: key.to_owned(),
+            },
+            action,
+        };
+        let mut keybinds = vec![
+            bind(alt, "Return", Action::Spawn(terminal.into())),
+            bind(alt, "q", Action::CloseFocused),
+            bind(alt, "Left", Action::FocusPrev),
+            bind(alt, "Right", Action::FocusNext),
+        ];
+        for (key, index) in [("1", 0u8), ("2", 1), ("3", 2), ("4", 3)] {
+            keybinds.push(bind(alt, key, Action::SwitchWorkspace(index)));
+        }
+        keybinds.push(bind(alt_shift, "q", Action::Quit));
+        Self {
+            mod_key: ModKey::Alt,
+            appearance: Appearance {
+                border_width: 3,
+                focus_color: rgba8([0x66, 0xa6, 0xff, 0xff]),
+                border_color: None,
+                background: rgba8([0x1f, 0x24, 0x33, 0xff]),
+            },
+            workspaces: 4,
+            keybinds,
+        }
+    }
+
+    /// 押されたキーに当たる操作。最初に当たったもの。
+    pub fn resolve_key(&self, mods: Mods, keysym: &str) -> Option<Action> {
+        self.keybinds
+            .iter()
+            .find(|b| b.key.matches(mods, keysym))
+            .map(|b| b.action.clone())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn builtin_keys_resolve() {
+        let s = Settings::builtin();
+        let alt = ModKey::Alt.mods();
+        assert_eq!(
+            s.resolve_key(alt, "Return"),
+            Some(Action::Spawn("foot".into()))
+        );
+        assert_eq!(s.resolve_key(alt, "Q"), Some(Action::CloseFocused));
+        let alt_shift = Mods { shift: true, ..alt };
+        assert_eq!(s.resolve_key(alt_shift, "q"), Some(Action::Quit));
+        assert_eq!(s.resolve_key(alt, "4"), Some(Action::SwitchWorkspace(3)));
+        assert_eq!(s.resolve_key(alt, "5"), None);
+        assert_eq!(s.resolve_key(Mods::default(), "q"), None);
+        assert_eq!(s.keybinds.len(), 9);
+    }
+
+    #[test]
+    fn super_mod_key_uses_logo() {
+        assert!(ModKey::Super.mods().logo);
+        assert!(!ModKey::Super.mods().alt);
+    }
+}

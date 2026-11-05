@@ -25,7 +25,8 @@ impl<P: ?Sized> PortPlacement<P> {
 
 impl<P: Policy + ?Sized> contrast_core::Policy for PortPlacement<P> {
     fn place(&self, meta: &WindowMeta, ctx: &PlacementContext<'_>) -> Placement {
-        let decided = self.port.place_window(meta);
+        let focused = ctx.focused_workspace().map(WorkspaceIndex::get);
+        let decided = self.port.place_window(meta, focused);
         let workspace = decided
             .workspace
             .filter(|n| *n < ctx.workspace_count())
@@ -85,7 +86,7 @@ mod tests {
         fn layout(&self, area: contrast_core::Rect, count: usize) -> Vec<contrast_core::Rect> {
             vec![area; count]
         }
-        fn place_window(&self, _meta: &WindowMeta) -> crate::WindowPlacement {
+        fn place_window(&self, _meta: &WindowMeta, _ws: Option<u8>) -> crate::WindowPlacement {
             crate::WindowPlacement {
                 workspace: Some(7),
                 state: WindowState::Tiled,

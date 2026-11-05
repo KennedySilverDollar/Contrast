@@ -22,7 +22,7 @@ pub struct Mods {
 /// キーバインド解決後の意味操作。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Action {
-    /// コマンドを起動する（引数なし、プログラム名のみ）。
+    /// コマンドを起動する。空白で区切った先頭がプログラム、残りが引数。
     Spawn(String),
     /// フォーカス窓を閉じる。
     CloseFocused,
@@ -30,8 +30,20 @@ pub enum Action {
     FocusPrev,
     /// 並びの次の窓へフォーカスを移す。
     FocusNext,
+    /// フォーカス窓を並びの左の窓と入れ替える。
+    MoveLeft,
+    /// フォーカス窓を並びの右の窓と入れ替える。
+    MoveRight,
     /// ワークスペースを切り替える（0 始まり）。
     SwitchWorkspace(u8),
+    /// フォーカス窓を別のワークスペースへ移す（0 始まり）。
+    MoveToWorkspace(u8),
+    /// フォーカス窓の Tiled / Floating を切り替える。
+    ToggleFloating,
+    /// フォーカス窓の全画面を切り替える。
+    ToggleFullscreen,
+    /// 設定を再読み込みする。
+    ReloadConfig,
     /// コンポジタを終了する。
     Quit,
 }
@@ -58,6 +70,10 @@ pub trait Policy {
     /// フォーカス枠の色（RGBA、0.0〜1.0）。
     fn focus_border_color(&self) -> [f32; 4];
 
+    /// フォーカス外の窓の枠の色（RGBA、0.0〜1.0）。`None` なら描かない。
+    fn unfocused_border_color(&self) -> Option<[f32; 4]> {
+        None
+    }
     /// ワークスペースの数（1 以上）。
     fn workspace_count(&self) -> u8;
 
@@ -69,7 +85,9 @@ pub trait Policy {
     /// 新しい窓（app_id・title・is_dialog など）をどこにどう置くか決める。
     ///
     /// contrast-core の `Policy::place` には `core_adapter::PortPlacement` 経由で渡る。
-    fn place_window(&self, meta: &WindowMeta) -> WindowPlacement;
+    ///
+    /// `focused_workspace` はフォーカス出力の表示ワークスペース（0 始まり。出力が無ければ `None`）。
+    fn place_window(&self, meta: &WindowMeta, focused_workspace: Option<u8>) -> WindowPlacement;
 
     /// 修飾キーとキーシンボル名（xkb の名前、例 `"Return"`, `"q"`, `"Left"`）から
     /// 意味操作を引く。該当しなければ `None`（クライアントへ素通しする）。
