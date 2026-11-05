@@ -33,17 +33,14 @@ pub struct ConfigSource {
 /// SIGUSR1 と `reload-config` アクションで、`source` から設定を読み直して `store` を差し替える。
 ///
 /// バックエンドは環境変数 `CONTRAST_BACKEND=winit|drm` で選ぶ。未指定で `WAYLAND_DISPLAY` か `DISPLAY` が
-/// あれば winit、無ければエラー。`drm` のときは出力を列挙し、最初の接続済み出力に背景色の単色を出す（フェーズ2。
-/// `CONTRAST_EXIT_AFTER` 秒、既定 30 で自動終了する）。
+/// あれば winit、無ければエラー。`drm` のときは実機の出力に描き、libinput で入力を受ける
+/// （`CONTRAST_EXIT_AFTER` 秒、既定 30 で自動終了する。0 なら無効）。
 pub fn run(store: Rc<ConfigStore>, source: ConfigSource) -> Result<(), Box<dyn std::error::Error>> {
     let choice = std::env::var("CONTRAST_BACKEND").ok();
     let has_host_display = ["WAYLAND_DISPLAY", "DISPLAY"]
         .iter()
         .any(|k| std::env::var_os(k).is_some_and(|v| !v.is_empty()));
-    if backend::select(choice.as_deref(), has_host_display)? == backend::Kind::Drm {
-        backend::drm::run(contrast_policy::Policy::background(&*store))?;
-        return Ok(());
-    }
+    let kind = backend::select(choice.as_deref(), has_host_display)?;
 
     let mut event_loop: EventLoop<Contrast> = EventLoop::try_new()?;
     // SIGUSR1 はスレッドを作る前にブロックして calloop で受ける（既定の動作は終了）。
@@ -54,7 +51,15 @@ pub fn run(store: Rc<ConfigStore>, source: ConfigSource) -> Result<(), Box<dyn s
     let display: Display<Contrast> = Display::new()?;
     let mut state = Contrast::new(&mut event_loop, display, store, source);
 
-    backend::winit::init_winit(&mut event_loop, &mut state)?;
+    // DRM の資源は `drm_guard` の Drop（と、ループの後の `finish`）で片付ける。パニックでも通る。
+    let mut drm_guard = None;
+    match kind {
+        backend::Kind::Winit => backend::winit::init_winit(&mut event_loop, &mut state)?,
+        backend::Kind::Drm => {
+            drm_guard = Some(backend::drm::init(&mut event_loop, &mut state)?);
+            tracing::info!("wayland: socket={}", state.socket_name.to_string_lossy());
+        }
+    }
     input::debug::init(&mut event_loop);
 
     tracing::info!(
@@ -63,7 +68,11 @@ pub fn run(store: Rc<ConfigStore>, source: ConfigSource) -> Result<(), Box<dyn s
         state.socket_name.to_string_lossy()
     );
 
-    event_loop.run(None, &mut state, |_| {})?;
+    let result = event_loop.run(None, &mut state, |_| {});
     tracing::info!("event loop stopped, exiting");
+    if let Some(guard) = drm_guard.as_mut() {
+        guard.finish()?;
+    }
+    result?;
     Ok(())
 }
