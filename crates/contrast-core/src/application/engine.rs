@@ -10,7 +10,7 @@ use alloc::vec::Vec;
 use crate::application::command::Command;
 use crate::application::effect::Applied;
 use crate::application::view::StateView;
-use crate::application::{arrange, diff, handlers};
+use crate::application::{arrange, diff, handlers, scrolling};
 use crate::domain::column::{LayoutMode, LayoutSettings, MAX_PRESETS, Ratio};
 use crate::domain::state::State;
 use crate::error::CoreError;
@@ -119,6 +119,9 @@ impl<P: Policy, L: Layout> Core<P, L> {
     pub fn apply(&mut self, command: Command) -> Result<Applied, CoreError> {
         let mut next = self.state.clone();
         let from_handler = handlers::dispatch(&mut next, &self.policy, command)?;
+        if next.layout.mode == LayoutMode::Scrolling {
+            scrolling::sync(&mut next);
+        }
         arrange::arrange(&mut next, &self.layout)?;
         let effects = diff::effects(&self.state, &next, from_handler);
         self.state = next;
