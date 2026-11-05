@@ -20,6 +20,28 @@ use smithay::reexports::{calloop::EventLoop, wayland_server::Display};
 use contrast_policy::{ConfigLoader, ConfigStore};
 pub use state::Contrast;
 
+/// 環境変数から使うバックエンドを決める。
+fn detect_backend() -> Result<backend::Kind, backend::SelectError> {
+    let choice = std::env::var("CONTRAST_BACKEND").ok();
+    let has_host_display = ["WAYLAND_DISPLAY", "DISPLAY"]
+        .iter()
+        .any(|k| std::env::var_os(k).is_some_and(|v| !v.is_empty()));
+    backend::select(choice.as_deref(), has_host_display)
+}
+
+/// 設定に `modKey` が無いときの `mod`。`CONTRAST_MOD_KEY`（`alt` / `super`）> バックエンドの既定
+/// （DRM は super、winit は alt）。バックエンドを決められないときは winit の既定（`run` がエラーにする）。
+/// 不正な環境変数は警告して無視する。CDL の `modKey` の明示は、これより優先される。
+pub fn startup_mod_key() -> contrast_policy::ModKey {
+    let kind = detect_backend().unwrap_or(backend::Kind::Winit);
+    let env = std::env::var("CONTRAST_MOD_KEY").ok();
+    let (mod_key, invalid) = backend::resolve_mod_key(env.as_deref(), kind);
+    if let Some(value) = invalid {
+        tracing::warn!("CONTRAST_MOD_KEY={value} は alt か super ではないので無視する");
+    }
+    mod_key
+}
+
 /// 設定の再読み込みに使う読み込み器と設定ファイルのパス。
 pub struct ConfigSource {
     /// 設定ファイルを読む読み込み器。
@@ -36,11 +58,7 @@ pub struct ConfigSource {
 /// あれば winit、無ければエラー。`drm` のときは実機の出力に描き、libinput で入力を受ける
 /// （`CONTRAST_EXIT_AFTER` 秒、既定 30 で自動終了する。0 なら無効）。
 pub fn run(store: Rc<ConfigStore>, source: ConfigSource) -> Result<(), Box<dyn std::error::Error>> {
-    let choice = std::env::var("CONTRAST_BACKEND").ok();
-    let has_host_display = ["WAYLAND_DISPLAY", "DISPLAY"]
-        .iter()
-        .any(|k| std::env::var_os(k).is_some_and(|v| !v.is_empty()));
-    let kind = backend::select(choice.as_deref(), has_host_display)?;
+    let kind = detect_backend()?;
 
     let mut event_loop: EventLoop<Contrast> = EventLoop::try_new()?;
     // SIGUSR1 はスレッドを作る前にブロックして calloop で受ける（既定の動作は終了）。

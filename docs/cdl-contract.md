@@ -10,7 +10,7 @@ CDL 側の仕様は CDL リポジトリの `docs/SPEC.md`（6・8・9 章）と 
 
 | 要素 | props | 子 | 一意 |
 | --- | --- | --- | --- |
-| `Contrast` | `modKey?: "alt" \| "super"`（既定 `"alt"`） | `Appearance` \| `Workspaces` \| `Keybind` | `Appearance`、`Workspaces` |
+| `Contrast` | `modKey?: "alt" \| "super"`（省略時は下記の優先順位で決まる） | `Appearance` \| `Workspaces` \| `Keybind` | `Appearance`、`Workspaces` |
 | `Appearance` | `borderWidth: Length`、`focusColor: Color`、`borderColor?: Color`、`background?: Color` | なし | — |
 | `Workspaces` | `count: number`（整数、1〜32） | なし | — |
 | `Keybind` | `keys: string`、`action: string`、`command?: string`、`workspace?: number` | なし | — |
@@ -20,10 +20,22 @@ CDL 側の仕様は CDL リポジトリの `docs/SPEC.md`（6・8・9 章）と 
   スキーマ上は `string` にして、Contrast の変換で検査する（誤りは CT003 / CT020）。
 - `borderWidth` は 0 以上の整数（px。負・非整数は CT003）。`focusColor` はフォーカス窓の枠、`borderColor` は省略時は描かないフォーカス外の窓の枠、`background` は背景色（省略時は組み込みの色）。
 
+### `modKey` の決まり方
+
+優先順位は、CDL の `modKey`（明示）> 環境変数 `CONTRAST_MOD_KEY=alt|super` > バックエンドの既定。
+バックエンドの既定は、DRM（実機の TTY）が `super`、winit（nested）が `alt`（ホストのコンポジタが Super を奪うため）。
+読み込み器（`CdlLoader::with_default_mod_key`）が「省略時の `mod`」を受け取り、`modKey` が無い設定にはそれを使う。
+`modKey` が不正なら CT003 で、その設定は使わない。環境変数が不正なら警告して無視する。
+組み込みの既定値（設定ファイルが無いとき）は、この規則に関わらず Alt のまま。
+
 ### action
 
 `spawn` / `close` / `focus-left` / `focus-right` / `move-left` / `move-right` / `workspace` / `move-to-workspace` /
+`workspace-next` / `workspace-prev` / `move-to-workspace-next` / `move-to-workspace-prev` /
 `toggle-floating` / `toggle-fullscreen` / `reload-config` / `quit`。
+
+- `workspace-next` / `workspace-prev` は、いま表示中の番号の ±1 へ切り替える。`move-to-workspace-next` / `-prev` は、
+  フォーカス窓をその番号へ移す。端では何もしない（循環しない）。引数は取らない。
 
 - `spawn` は `command` 必須（空白で区切った先頭がプログラム、残りが引数）。
 - `workspace` と `move-to-workspace` は `workspace` 必須。CDL では 1 始まり。core の `WorkspaceIndex` は 0 始まりなので

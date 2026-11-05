@@ -5,6 +5,8 @@ pub mod winit;
 
 use std::fmt;
 
+use contrast_policy::ModKey;
+
 /// 使うバックエンド。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
@@ -54,9 +56,45 @@ pub fn select(choice: Option<&str>, has_host_display: bool) -> Result<Kind, Sele
     }
 }
 
+/// `mod` の既定: DRM（実機の TTY）は Super、winit（nested）は Alt（ホストが Super を奪うため）。
+pub fn default_mod_key(kind: Kind) -> ModKey {
+    match kind {
+        Kind::Drm => ModKey::Super,
+        Kind::Winit => ModKey::Alt,
+    }
+}
+
+/// `mod` の既定を決める。`CONTRAST_MOD_KEY`（`alt` / `super`）> バックエンドの既定。
+/// 環境変数が不正なら無視する（`Err` に値を入れて返し、呼び出し側が警告する）。
+/// CDL の `modKey` は、この結果より優先される（読み込み器が処理する）。
+pub fn resolve_mod_key(env: Option<&str>, kind: Kind) -> (ModKey, Option<String>) {
+    match env {
+        None => (default_mod_key(kind), None),
+        Some(v) => match ModKey::parse(v) {
+            Some(m) => (m, None),
+            None => (default_mod_key(kind), Some(v.to_string())),
+        },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mod_key_priority_is_env_then_backend() {
+        assert_eq!(resolve_mod_key(None, Kind::Drm), (ModKey::Super, None));
+        assert_eq!(resolve_mod_key(None, Kind::Winit), (ModKey::Alt, None));
+        assert_eq!(resolve_mod_key(Some("alt"), Kind::Drm), (ModKey::Alt, None));
+        assert_eq!(
+            resolve_mod_key(Some("super"), Kind::Winit),
+            (ModKey::Super, None)
+        );
+        assert_eq!(
+            resolve_mod_key(Some("hyper"), Kind::Drm),
+            (ModKey::Super, Some("hyper".to_string()))
+        );
+    }
 
     #[test]
     fn explicit_choice_wins() {

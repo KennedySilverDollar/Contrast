@@ -84,6 +84,7 @@ fn workspace_index(n: f64, count: u8) -> Option<u8> {
 pub(crate) fn to_settings(
     root: Node<'_>,
     sources: &BTreeMap<String, String>,
+    default_mod_key: ModKey,
 ) -> Result<Settings, Vec<ConfigDiagnostic>> {
     let mut cx = Ctx {
         sources,
@@ -95,7 +96,7 @@ pub(crate) fn to_settings(
     if let Err(d) = root.expect("Contrast") {
         return Err(vec![convert(&d, sources)]);
     }
-    settings.mod_key = read_mod_key(&mut cx, root);
+    settings.mod_key = read_mod_key(&mut cx, root, default_mod_key);
 
     // 1 回目: Appearance と Workspaces（キーバインドの検査に数が要る）。
     let mut keybind_nodes = Vec::new();
@@ -159,10 +160,11 @@ fn prop_text(node: Node<'_>, key: &str) -> String {
         .unwrap_or_default()
 }
 
-/// `Contrast` の `modKey`。省略は Alt。
-fn read_mod_key(cx: &mut Ctx<'_>, root: Node<'_>) -> ModKey {
+/// `Contrast` の `modKey`。省略したときは `default`（環境変数・バックエンドで決まった既定）。
+fn read_mod_key(cx: &mut Ctx<'_>, root: Node<'_>, default: ModKey) -> ModKey {
     match cx.optional::<String>(root, "modKey").as_deref() {
-        None | Some("alt") => ModKey::Alt,
+        None => default,
+        Some("alt") => ModKey::Alt,
         Some("super") => ModKey::Super,
         Some(other) => {
             cx.error(
@@ -170,7 +172,7 @@ fn read_mod_key(cx: &mut Ctx<'_>, root: Node<'_>) -> ModKey {
                 codes::BAD_PROP,
                 format!("`modKey` は \"alt\" か \"super\"（\"{other}\" は使えない）"),
             );
-            ModKey::Alt
+            default
         }
     }
 }
@@ -253,6 +255,10 @@ fn read_action(
         "move-right" => Some(Action::MoveRight),
         "toggle-floating" => Some(Action::ToggleFloating),
         "toggle-fullscreen" => Some(Action::ToggleFullscreen),
+        "workspace-next" => Some(Action::WorkspaceNext),
+        "workspace-prev" => Some(Action::WorkspacePrev),
+        "move-to-workspace-next" => Some(Action::MoveToWorkspaceNext),
+        "move-to-workspace-prev" => Some(Action::MoveToWorkspacePrev),
         "reload-config" => Some(Action::ReloadConfig),
         "quit" => Some(Action::Quit),
         _ => None,
@@ -301,7 +307,8 @@ fn read_action(
                 codes::UNKNOWN_ACTION,
                 format!(
                     "未知の action \"{other}\"（spawn / close / focus-left / focus-right / move-left / move-right / \
-                     workspace / move-to-workspace / toggle-floating / toggle-fullscreen / reload-config / quit）"
+                     workspace / move-to-workspace / workspace-next / workspace-prev / move-to-workspace-next / \
+                     move-to-workspace-prev / toggle-floating / toggle-fullscreen / reload-config / quit）"
                 ),
             );
             None

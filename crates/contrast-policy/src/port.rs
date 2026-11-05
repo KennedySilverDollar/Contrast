@@ -38,6 +38,14 @@ pub enum Action {
     SwitchWorkspace(u8),
     /// フォーカス窓を別のワークスペースへ移す（0 始まり）。
     MoveToWorkspace(u8),
+    /// 表示中の次のワークスペースへ切り替える。最後の次は無い（循環しない）。
+    WorkspaceNext,
+    /// 表示中の前のワークスペースへ切り替える。最初の前は無い（循環しない）。
+    WorkspacePrev,
+    /// フォーカス窓を次のワークスペースへ移す。最後の次は無い（循環しない）。
+    MoveToWorkspaceNext,
+    /// フォーカス窓を前のワークスペースへ移す。最初の前は無い（循環しない）。
+    MoveToWorkspacePrev,
     /// フォーカス窓の Tiled / Floating を切り替える。
     ToggleFloating,
     /// フォーカス窓の全画面を切り替える。

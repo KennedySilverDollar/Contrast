@@ -21,6 +21,15 @@ pub enum ModKey {
 }
 
 impl ModKey {
+    /// `"alt"` / `"super"`（大文字小文字は区別しない）を `ModKey` にする。それ以外は `None`。
+    pub fn parse(text: &str) -> Option<Self> {
+        match text.trim().to_ascii_lowercase().as_str() {
+            "alt" => Some(Self::Alt),
+            "super" => Some(Self::Super),
+            _ => None,
+        }
+    }
+
     /// `mod` を `Mods` にしたもの。
     pub fn mods(self) -> Mods {
         match self {
@@ -160,6 +169,14 @@ mod tests {
         assert_eq!(s.resolve_key(alt, "5"), None);
         assert_eq!(s.resolve_key(Mods::default(), "q"), None);
         assert_eq!(s.keybinds.len(), 9);
+    }
+
+    #[test]
+    fn mod_key_parses_names() {
+        assert_eq!(ModKey::parse("alt"), Some(ModKey::Alt));
+        assert_eq!(ModKey::parse(" Super "), Some(ModKey::Super));
+        assert_eq!(ModKey::parse("hyper"), None);
+        assert_eq!(ModKey::parse(""), None);
     }
 
     #[test]

@@ -38,7 +38,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         std::env::var_os("XDG_CONFIG_HOME"),
         std::env::var_os("HOME"),
     );
-    let loader = CdlLoader::new();
+    let default_mod_key = contrast_compositor::startup_mod_key();
+    tracing::info!("config: default mod key={default_mod_key:?} (modKey in the config overrides)");
+    let loader = CdlLoader::new().with_default_mod_key(default_mod_key);
     let builtin = Config::new(Settings::builtin_with_terminal(terminal), None);
     let (config, status) = load_or_builtin(&loader, path.as_deref(), builtin);
 

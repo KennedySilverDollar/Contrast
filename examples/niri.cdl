@@ -1,0 +1,92 @@
+// niri（~/.config/niri/config.kdl の binds）に合わせたキー割り当て。
+// niri のスクロール型レイアウトの再現ではなく、キーを揃えるのが目的。
+//
+// modKey は書かない。優先順位は、ここに書いた modKey > 環境変数 CONTRAST_MOD_KEY=alt|super >
+// バックエンドの既定（実機の DRM は super、nested の winit は alt）。
+// niri の Mod は、実機の TTY では Super。
+//
+// 対応しない niri の操作（モニタ・列の幅/高さ・列への出し入れ・マウスホイール・スクリーンショットなど）は書かない。
+// Mod+Alt+… の 3 つは Mod が Alt のとき Mod+… と同じキーになってしまうので、`super+alt+…` と書く（niri の Mod=Super と同じ）。
+// 縦方向（Down/Up と J/K）の移動は、Contrast に列の中の縦の並びが無いので、並びの次/前へ代用する。
+"use cdl 1";
+import { Contrast, Appearance, Workspaces, Keybind } from "host:contrast";
+
+export default (
+  <Contrast>
+    <Appearance borderWidth={px(3)} focusColor={color("#66a6ff")} background={color("#1f2433")} />
+    {/* niri の Mod+1〜9 に合わせて 9 つ */}
+    <Workspaces count={9} />
+
+    {/* プログラムの起動（niri の spawn / spawn-sh のコマンドそのまま） */}
+    <Keybind keys="mod+t" action="spawn" command="alacritty" />
+    <Keybind keys="mod+d" action="spawn" command="fuzzel" />
+    <Keybind keys="mod+b" action="spawn" command="firefox-nightly" />
+    <Keybind keys="super+alt+j" action="spawn" command="env DISPLAY=:0 /home/user/jetbrains-toolbox-3.8.1.88030/bin/jetbrains-toolbox" />
+    <Keybind keys="mod+shift+d" action="spawn" command="strat fedora /home/user/DiscordPTB/launch.sh" />
+    <Keybind keys="super+alt+e" action="spawn" command="strat fedora /home/user/eclipse/eclipse" />
+    <Keybind keys="super+alt+l" action="spawn" command="swaylock" />
+    <Keybind keys="ctrl+shift+space" action="spawn" command="fcitx5-remote -t" />
+    <Keybind keys="XF86AudioRaiseVolume" action="spawn" command="wpctl set-volume @DEFAULT_AUDIO_SINK@ 0.1+" />
+    <Keybind keys="XF86AudioLowerVolume" action="spawn" command="wpctl set-volume @DEFAULT_AUDIO_SINK@ 0.1-" />
+    <Keybind keys="XF86AudioMute" action="spawn" command="wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle" />
+    <Keybind keys="XF86AudioMicMute" action="spawn" command="wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle" />
+
+    {/* 窓を閉じる・終了 */}
+    <Keybind keys="mod+q" action="close" />
+    <Keybind keys="mod+shift+e" action="quit" />
+
+    {/* フォーカス移動（Left/Right/H/L は niri と同じ。Down/Up/J/K は並びの次/前で代用） */}
+    <Keybind keys="mod+Left" action="focus-left" />
+    <Keybind keys="mod+Right" action="focus-right" />
+    <Keybind keys="mod+h" action="focus-left" />
+    <Keybind keys="mod+l" action="focus-right" />
+    <Keybind keys="mod+Up" action="focus-left" />
+    <Keybind keys="mod+Down" action="focus-right" />
+    <Keybind keys="mod+k" action="focus-left" />
+    <Keybind keys="mod+j" action="focus-right" />
+
+    {/* 窓の移動（move-column-left/right 相当。Down/Up/J/K は代用） */}
+    <Keybind keys="mod+ctrl+Left" action="move-left" />
+    <Keybind keys="mod+ctrl+Right" action="move-right" />
+    <Keybind keys="mod+ctrl+h" action="move-left" />
+    <Keybind keys="mod+ctrl+l" action="move-right" />
+    <Keybind keys="mod+ctrl+Up" action="move-left" />
+    <Keybind keys="mod+ctrl+Down" action="move-right" />
+    <Keybind keys="mod+ctrl+k" action="move-left" />
+    <Keybind keys="mod+ctrl+j" action="move-right" />
+
+    {/* ワークスペースの切り替え（focus-workspace-down/up は次/前。端で循環しない） */}
+    <Keybind keys="mod+Page_Down" action="workspace-next" />
+    <Keybind keys="mod+Page_Up" action="workspace-prev" />
+    <Keybind keys="mod+u" action="workspace-next" />
+    <Keybind keys="mod+i" action="workspace-prev" />
+    <Keybind keys="mod+1" action="workspace" workspace={1} />
+    <Keybind keys="mod+2" action="workspace" workspace={2} />
+    <Keybind keys="mod+3" action="workspace" workspace={3} />
+    <Keybind keys="mod+4" action="workspace" workspace={4} />
+    <Keybind keys="mod+5" action="workspace" workspace={5} />
+    <Keybind keys="mod+6" action="workspace" workspace={6} />
+    <Keybind keys="mod+7" action="workspace" workspace={7} />
+    <Keybind keys="mod+8" action="workspace" workspace={8} />
+    <Keybind keys="mod+9" action="workspace" workspace={9} />
+
+    {/* 窓を別のワークスペースへ（move-column-to-workspace-*） */}
+    <Keybind keys="mod+ctrl+Page_Down" action="move-to-workspace-next" />
+    <Keybind keys="mod+ctrl+Page_Up" action="move-to-workspace-prev" />
+    <Keybind keys="mod+ctrl+u" action="move-to-workspace-next" />
+    <Keybind keys="mod+ctrl+i" action="move-to-workspace-prev" />
+    <Keybind keys="mod+ctrl+1" action="move-to-workspace" workspace={1} />
+    <Keybind keys="mod+ctrl+2" action="move-to-workspace" workspace={2} />
+    <Keybind keys="mod+ctrl+3" action="move-to-workspace" workspace={3} />
+    <Keybind keys="mod+ctrl+4" action="move-to-workspace" workspace={4} />
+    <Keybind keys="mod+ctrl+5" action="move-to-workspace" workspace={5} />
+    <Keybind keys="mod+ctrl+6" action="move-to-workspace" workspace={6} />
+    <Keybind keys="mod+ctrl+7" action="move-to-workspace" workspace={7} />
+    <Keybind keys="mod+ctrl+8" action="move-to-workspace" workspace={8} />
+    <Keybind keys="mod+ctrl+9" action="move-to-workspace" workspace={9} />
+
+    {/* 全画面（fullscreen-window）。フローティングの切り替えは niri の既定の Mod+V */}
+    <Keybind keys="mod+shift+f" action="toggle-fullscreen" />
+    <Keybind keys="mod+v" action="toggle-floating" />
+  </Contrast>
+);

@@ -8,7 +8,7 @@ use std::path::Path;
 use std::rc::Rc;
 
 use cdl_host::{Engine, Limits, ModuleResolver};
-use contrast_policy::{Config, ConfigDiagnostic, ConfigLoader, LoadOutcome, codes};
+use contrast_policy::{Config, ConfigDiagnostic, ConfigLoader, LoadOutcome, ModKey, codes};
 
 use crate::convert::to_settings;
 use crate::diag::{convert_all, internal};
@@ -21,6 +21,8 @@ use crate::schema::contrast_schema;
 pub struct CdlLoader {
     /// CDL の資源上限。
     limits: Limits,
+    /// `modKey` を省略した設定の `mod`。呼び出し側が、環境変数・バックエンドの既定から決めて渡す。
+    default_mod_key: ModKey,
 }
 
 impl CdlLoader {
@@ -31,7 +33,17 @@ impl CdlLoader {
 
     /// 上限を指定して作る。
     pub fn with_limits(limits: Limits) -> Self {
-        Self { limits }
+        Self {
+            limits,
+            ..Self::default()
+        }
+    }
+
+    /// `modKey` を省略した設定の `mod` を指定する（既定は Alt）。設定に `modKey` があればそちらが優先。
+    #[must_use]
+    pub fn with_default_mod_key(mut self, mod_key: ModKey) -> Self {
+        self.default_mod_key = mod_key;
+        self
     }
 }
 
@@ -58,7 +70,7 @@ impl ConfigLoader for CdlLoader {
                     return LoadOutcome::Failed(vec![internal(codes::FILE_UNREADABLE, message)]);
                 }
             };
-        match load_config(&resolver, &entry, self.limits) {
+        match load_config(&resolver, &entry, self.limits, self.default_mod_key) {
             Ok(config) => LoadOutcome::Loaded(config),
             Err(diags) => LoadOutcome::Failed(diags),
         }
@@ -70,6 +82,7 @@ pub(crate) fn load_config(
     resolver: &dyn ModuleResolver,
     entry: &str,
     limits: Limits,
+    default_mod_key: ModKey,
 ) -> Result<Config, Vec<ConfigDiagnostic>> {
     let schema = contrast_schema().map_err(|errors| {
         errors
@@ -84,7 +97,7 @@ pub(crate) fn load_config(
         Err(diags) => return Err(convert_all(&diags, &recording.into_sources())),
     };
     let sources = recording.into_sources();
-    let settings = to_settings(program.root(), &sources)?;
+    let settings = to_settings(program.root(), &sources, default_mod_key)?;
     let hook = CdlPolicy::new(Rc::new(program), sources);
     Ok(Config::new(settings, Some(Box::new(hook))))
 }
