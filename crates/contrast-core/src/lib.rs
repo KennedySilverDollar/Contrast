@@ -20,7 +20,7 @@ mod domain {
 /// Command の解釈と Effect の生成（`Core`）。
 mod application;
 mod error;
-/// 不変条件 I1〜I6 の検査。
+/// 不変条件 I1〜I6・I9 の検査。
 #[cfg(any(test, kani, feature = "invariants"))]
 mod invariant;
 /// Tiled 窓の配置計算。

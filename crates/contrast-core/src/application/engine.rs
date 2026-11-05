@@ -3,7 +3,7 @@
 //! 守る不変条件:
 //! - I7 `apply` は複製した State だけを変え、Err なら元の State を一切変えない。
 //! - I8 `apply` は State と Command だけから決まる（時刻・乱数・反復順の不定なコレクションを使わない）。
-//! - I1〜I6 は各 handler と `arrange` が保ち、`check_invariants` で検査できる。
+//! - I1〜I6・I9 は各 handler と `arrange` が保ち、`check_invariants` で検査できる。
 
 use crate::application::command::Command;
 use crate::application::effect::Applied;
@@ -78,7 +78,7 @@ impl<P: Policy, L: Layout> Core<P, L> {
         StateView::new(&self.state)
     }
 
-    /// 不変条件 I1〜I6 を検査する。
+    /// 不変条件 I1〜I6・I9 を検査する。
     ///
     /// # Errors
     /// 最初に見つかった違反。
