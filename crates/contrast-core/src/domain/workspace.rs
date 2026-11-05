@@ -7,6 +7,7 @@
 
 use alloc::vec::Vec;
 
+use crate::domain::column::Column;
 use crate::domain::id::{WindowId, WorkspaceId, WorkspaceIndex};
 
 /// ワークスペース 1 つ。D1 により全出力で共有され、数は増減しない。
@@ -20,6 +21,10 @@ pub struct Workspace {
     pub windows: Vec<WindowId>,
     /// フォーカス履歴。末尾が最新。
     pub focus_history: Vec<WindowId>,
+    /// 列の並び（左から右）。`Scrolling` のときだけ使い、`Equal` では空のまま（D36）。
+    pub columns: Vec<Column>,
+    /// ビューの左端（作業領域の左端から数えた x、0 以上。`Scrolling` のみ、D39）。
+    pub view_x: i32,
 }
 
 impl Workspace {
@@ -31,6 +36,8 @@ impl Workspace {
             index,
             windows: Vec::new(),
             focus_history: Vec::new(),
+            columns: Vec::new(),
+            view_x: 0,
         }
     }
 
@@ -44,9 +51,38 @@ impl Workspace {
     /// 順序列と履歴から窓を除き、順序列で占めていた位置を返す。
     pub fn remove_window(&mut self, id: WindowId) -> Option<usize> {
         self.focus_history.retain(|w| *w != id);
+        self.remove_from_columns(id);
         let position = self.windows.iter().position(|w| *w == id)?;
         self.windows.retain(|w| *w != id);
         Some(position)
+    }
+
+    /// 窓 `id` がある列の位置 `(列, 列の中の行)`。どの列にもなければ `None`。
+    #[must_use]
+    pub fn column_of(&self, id: WindowId) -> Option<(usize, usize)> {
+        self.columns.iter().enumerate().find_map(|(c, col)| {
+            col.windows
+                .iter()
+                .position(|w| *w == id)
+                .map(|row| (c, row))
+        })
+    }
+
+    /// 窓 `id` を列から除く。空になった列も除く。
+    pub fn remove_from_columns(&mut self, id: WindowId) {
+        for col in &mut self.columns {
+            col.windows.retain(|w| *w != id);
+        }
+        self.columns.retain(|col| !col.windows.is_empty());
+    }
+
+    /// 列 `from` を位置 `to` へ移す（間の列は 1 つずつずれる）。範囲外なら何もしない。
+    pub fn move_column(&mut self, from: usize, to: usize) {
+        if from >= self.columns.len() || to >= self.columns.len() || from == to {
+            return;
+        }
+        let column = self.columns.remove(from);
+        self.columns.insert(to, column);
     }
 
     /// フォーカス履歴の最新を `id` にする。
