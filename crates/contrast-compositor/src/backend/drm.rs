@@ -1,20 +1,25 @@
-//! DRM バックエンド（フェーズ2）: 出力を列挙してログに出し、最初の接続済み connector の preferred モードで
-//! modeset して、背景色の単色を page flip で出し続ける。入力はまだ扱わない。
+//! DRM バックエンド（フェーズ3・4）: 実機の出力に Contrast の描画（窓・枠・レイヤー面・カーソル）を載せ、
+//! libinput でキーボードとポインタを扱う。Wayland サーバーや core・policy は `Contrast` がそのまま持ち、
+//! 同じ calloop のループで動く。
 //!
 //! 安全策:
-//! - `CONTRAST_EXIT_AFTER`（秒、既定 30）で必ず自動終了する。
-//! - SIGINT / SIGTERM はイベントループで受けて、ループを抜けて通常の終了処理に入る。
-//! - 終了処理は `Drop`（`Gpu` と `App`）に置く。正常終了・シグナル・パニック（unwind）のどれでも通る。
+//! - `CONTRAST_EXIT_AFTER`（秒、既定 30）で必ず自動終了する。`0` と明示したときだけ、タイマーを無効にする。
+//! - SIGINT / SIGTERM はイベントループで受けて、ループを抜けて通常の終了処理に入る。Alt+Shift+Q も同じ道を通る。
+//! - 終了処理は `Drop`（`DrmGuard` と `Gpu`）に置く。正常終了・シグナル・パニック（unwind）のどれでも通る。
 //!   出力を止め（surface の Drop が CRTC を無効化）、DRM master を手放し、fd を閉じるとカーネルが fbcon を戻す。
 //! - 最初の page flip が 2 秒以内に終わらなければ、エラーで終了する。
-//! - session の inactive（VT 切り替え）は必ずイベントループで処理する（描画を止めて master を手放す）。
+//! - session の inactive（VT 切り替え）は必ずイベントループで処理する（描画と入力を止めて master を手放す）。
 //!   active に戻れば再開する。libseat への応答（disable の ack）は `LibSeatSessionNotifier` が行う。
 //! - modeset の失敗は原因つきのエラー（終了コード 1）にする。
+//!
+//! 未対応: dmabuf（wl_shm のクライアントだけ）、ホットプラグ、複数出力、スケール、クライアントのカーソル画像。
 
+use std::cell::RefCell;
 use std::fmt;
 use std::io;
 use std::os::fd::{AsFd, BorrowedFd, OwnedFd};
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use smithay::backend::{
@@ -29,14 +34,19 @@ use smithay::backend::{
         output::{DrmOutput, DrmOutputManager, DrmOutputRenderElements},
     },
     egl::{EGLContext, EGLDisplay},
-    renderer::{element::solid::SolidColorRenderElement, gles::GlesRenderer},
+    libinput::{LibinputInputBackend, LibinputSessionInterface},
+    renderer::{
+        element::{Kind, solid::SolidColorBuffer, solid::SolidColorRenderElement},
+        gles::GlesRenderer,
+    },
     session::{Event as SessionEvent, Session, libseat::LibSeatSession},
     udev::{UdevBackend, primary_gpu},
 };
+use smithay::input::pointer::MotionEvent;
 use smithay::output::{Mode as OutputMode, Output, PhysicalProperties, Subpixel};
 use smithay::reexports::{
     calloop::{
-        EventLoop, LoopHandle, LoopSignal,
+        EventLoop, LoopHandle,
         signals::{Signal, Signals},
         timer::{TimeoutAction, Timer},
     },
@@ -44,9 +54,15 @@ use smithay::reexports::{
         self,
         control::{self, Device as ControlDevice, connector::State, crtc},
     },
+    input::Libinput,
     rustix::fs::OFlags,
 };
-use smithay::utils::DeviceFd;
+use smithay::utils::{DeviceFd, Logical, Point, SERIAL_COUNTER, Transform};
+
+use contrast_core::Rect;
+
+use crate::render::{SceneElement, finish_frame, scene_elements};
+use crate::state::Contrast;
 
 /// 最初の page flip を待つ上限。
 const FIRST_FLIP_TIMEOUT: Duration = Duration::from_secs(2);
@@ -54,6 +70,9 @@ const FIRST_FLIP_TIMEOUT: Duration = Duration::from_secs(2);
 const DEFAULT_EXIT_AFTER_SECS: u64 = 30;
 /// 空のフレームが返ったときにやり直すまでの間隔（約 1 リフレッシュ）。
 const RETRY_INTERVAL: Duration = Duration::from_millis(16);
+/// カーソル（色つきの四角）の一辺と色。
+const CURSOR_SIZE: i32 = 12;
+const CURSOR_COLOR: [f32; 4] = [1.0, 1.0, 1.0, 1.0];
 
 /// DRM バックエンドの起動・列挙・表示の失敗。
 #[derive(Debug)]
@@ -81,6 +100,8 @@ pub enum DrmError {
     Frame(String),
     /// 最初の page flip が時間内に終わらなかった。
     FlipTimeout,
+    /// libinput の初期化に失敗した。
+    Input(String),
 }
 
 impl fmt::Display for DrmError {
@@ -130,6 +151,10 @@ impl fmt::Display for DrmError {
                 "DRM バックエンド: 最初の page flip が {} 秒以内に完了しませんでした",
                 FIRST_FLIP_TIMEOUT.as_secs()
             ),
+            DrmError::Input(e) => write!(
+                f,
+                "DRM バックエンド: libinput の初期化に失敗しました（{e}）"
+            ),
         }
     }
 }
@@ -168,8 +193,6 @@ struct Gpu {
     output: Option<OutputHandle>,
     manager: Option<Manager>,
     renderer: Option<GlesRenderer>,
-    /// イベントループに登録するまでの vblank 通知。
-    notifier: Option<DrmDeviceNotifier>,
 }
 
 impl Drop for Gpu {
@@ -183,58 +206,70 @@ impl Drop for Gpu {
         }
         self.manager = None;
         self.renderer = None;
-        self.notifier = None;
         tracing::info!("drm: released master");
     }
 }
 
-/// イベントループが持つ状態。
-struct App {
-    // `gpu` を `session` より先に落とす（フィールドは宣言順に Drop される）。
+/// DRM バックエンドの状態。イベントループのコールバックが `Rc<RefCell<_>>` 越しに触る。
+struct Drm {
+    // `gpu` を `_session` より先に落とす（フィールドは宣言順に Drop される）。
     gpu: Option<Gpu>,
-    /// Drop まで session（seat）を生かしておく。
     _session: LibSeatSession,
-    handle: LoopHandle<'static, App>,
-    signal: LoopSignal,
-    background: [f32; 4],
+    output: Output,
+    cursor: SolidColorBuffer,
+    libinput: Libinput,
+    handle: LoopHandle<'static, Contrast>,
     active: bool,
     frames: u64,
     last_log: Instant,
     error: Option<DrmError>,
 }
 
-impl App {
+type Shared = Rc<RefCell<Drm>>;
+
+/// 共有状態を借りて `f` を呼ぶ。すでに借りていれば（再入）何もしない。
+fn with(drm: &Shared, f: impl FnOnce(&mut Drm)) {
+    if let Ok(mut d) = drm.try_borrow_mut() {
+        f(&mut d);
+    }
+}
+
+impl Drm {
     /// ループを止めて、`error` を持ち帰る。
-    fn fail(&mut self, error: DrmError) {
+    fn fail(&mut self, state: &mut Contrast, error: DrmError) {
         tracing::error!("{error}");
         if self.error.is_none() {
             self.error = Some(error);
         }
-        self.signal.stop();
+        state.loop_signal.stop();
     }
 
-    /// 次のフレームを描いて queue する。同じ単色でよいので、毎回バッファの age を捨てて全面を描き直す。
-    fn render(&mut self) {
+    /// 次のフレームを描いて queue し、成功したら frame callback を送る。
+    /// クライアントの commit を拾うため、毎回バッファの age を捨てて全面を描き直す（プロトタイプ）。
+    fn render(&mut self, state: &mut Contrast, shared: &Shared) {
         if !self.active {
             return;
         }
-        let background = self.background;
         let first = self.frames == 0;
+        let background = state.policy.background();
+        let cursor = self.cursor_element(state);
+        let output_name = self.output.clone();
         let Some(gpu) = self.gpu.as_mut() else {
             return;
         };
         let (Some(output), Some(renderer)) = (gpu.output.as_mut(), gpu.renderer.as_mut()) else {
             return;
         };
+        let elements = match scene_elements(state, renderer, &output_name, Some(cursor)) {
+            Ok(e) => e,
+            Err(e) => {
+                self.fail(state, DrmError::Frame(e.to_string()));
+                return;
+            }
+        };
         output.with_compositor(|c| c.reset_buffer_ages());
-        let elements: [SolidColorRenderElement; 0] = [];
         let rendered = output
-            .render_frame::<_, SolidColorRenderElement>(
-                renderer,
-                &elements,
-                background,
-                FrameFlags::DEFAULT,
-            )
+            .render_frame::<_, SceneElement>(renderer, &elements, background, FrameFlags::DEFAULT)
             .map(|result| result.is_empty)
             .map_err(|e| DrmError::Frame(e.to_string()));
         let result = match rendered {
@@ -250,24 +285,44 @@ impl App {
             Err(e) => Err(Some(e)),
         };
         match result {
-            Ok(()) => {}
-            Err(Some(error)) => self.fail(error),
+            Ok(()) => finish_frame(state, &output_name),
+            Err(Some(error)) => self.fail(state, error),
             Err(None) => {
                 // 空のフレーム: 少し待ってやり直す。
-                let timer = Timer::from_duration(RETRY_INTERVAL);
-                let scheduled = self.handle.insert_source(timer, |_, _, app| {
-                    app.render();
-                    TimeoutAction::Drop
-                });
+                let shared = shared.clone();
+                let scheduled = self.handle.insert_source(
+                    Timer::from_duration(RETRY_INTERVAL),
+                    move |_, _, state| {
+                        with(&shared.clone(), |d| d.render(state, &shared));
+                        TimeoutAction::Drop
+                    },
+                );
                 if let Err(e) = scheduled {
-                    self.fail(DrmError::EventLoop(e.to_string()));
+                    self.fail(state, DrmError::EventLoop(e.to_string()));
                 }
             }
         }
     }
 
+    /// ポインタの位置に置く、色つきの四角。
+    fn cursor_element(&mut self, state: &Contrast) -> SolidColorRenderElement {
+        self.cursor.update((CURSOR_SIZE, CURSOR_SIZE), CURSOR_COLOR);
+        let loc: Point<i32, Logical> = state
+            .seat
+            .get_pointer()
+            .map(|p| p.current_location().to_i32_round())
+            .unwrap_or_default();
+        SolidColorRenderElement::from_buffer(
+            &self.cursor,
+            (loc.x, loc.y),
+            1.0,
+            1.0,
+            Kind::Unspecified,
+        )
+    }
+
     /// vblank: 提出済みのフレームを確定して、次を出す。
-    fn on_vblank(&mut self) {
+    fn on_vblank(&mut self, state: &mut Contrast, shared: &Shared) {
         let Some(output) = self.gpu.as_mut().and_then(|g| g.output.as_mut()) else {
             return;
         };
@@ -275,7 +330,7 @@ impl App {
             Ok(Some(())) => {}
             Ok(None) => return,
             Err(e) => {
-                self.fail(DrmError::Frame(e.to_string()));
+                self.fail(state, DrmError::Frame(e.to_string()));
                 return;
             }
         }
@@ -284,74 +339,89 @@ impl App {
             self.last_log = Instant::now();
             tracing::info!("drm: frame={}", self.frames);
         }
-        self.render();
+        self.render(state, shared);
     }
 
-    /// session が inactive になった（VT 切り替え）: 描画を止めて master を手放す。
+    /// session が inactive になった（VT 切り替え）: 描画と入力を止めて master を手放す。
     fn pause(&mut self) {
         tracing::info!("drm: session inactive");
         self.active = false;
+        self.libinput.suspend();
         if let Some(manager) = self.gpu.as_mut().and_then(|g| g.manager.as_mut()) {
             manager.pause();
         }
     }
 
-    /// session が active に戻った: master を取り直して描画を再開する。
-    fn resume(&mut self) {
+    /// session が active に戻った: master を取り直して入力と描画を再開する。
+    fn resume(&mut self, state: &mut Contrast, shared: &Shared) {
         tracing::info!("drm: session active");
         self.active = true;
+        if self.libinput.resume().is_err() {
+            tracing::warn!("drm: libinput resume failed");
+        }
         if let Some(manager) = self.gpu.as_mut().and_then(|g| g.manager.as_mut())
             && let Err(e) = manager.activate(false)
         {
-            self.fail(DrmError::Frame(format!("activate failed: {e}")));
+            self.fail(state, DrmError::Frame(format!("activate failed: {e}")));
             return;
         }
-        self.render();
+        self.render(state, shared);
     }
 }
 
-/// `CONTRAST_EXIT_AFTER`（秒）を読む。未指定は既定の 30 秒。
-fn exit_after() -> Result<Duration, DrmError> {
+/// `init` が返す、終了処理の持ち主。Drop（パニックを含む）か `finish` で GPU 資源を片付ける。
+pub struct DrmGuard {
+    drm: Shared,
+}
+
+impl DrmGuard {
+    /// イベントループのあとの後始末（出力を止めて master を手放す）。実行中に起きたエラーがあれば返す。
+    pub fn finish(&mut self) -> Result<(), DrmError> {
+        let mut drm = self
+            .drm
+            .try_borrow_mut()
+            .map_err(|_| DrmError::Frame("DRM state is still borrowed".to_string()))?;
+        drm.gpu = None;
+        match drm.error.take() {
+            Some(e) => Err(e),
+            None => Ok(()),
+        }
+    }
+}
+
+impl Drop for DrmGuard {
+    fn drop(&mut self) {
+        if let Ok(mut drm) = self.drm.try_borrow_mut() {
+            drm.gpu = None;
+        }
+    }
+}
+
+/// `CONTRAST_EXIT_AFTER`（秒）を読む。未指定は既定の 30 秒。`0` と明示したときだけ `None`（タイマー無し）。
+fn exit_after() -> Result<Option<Duration>, DrmError> {
     match std::env::var("CONTRAST_EXIT_AFTER") {
-        Err(_) => Ok(Duration::from_secs(DEFAULT_EXIT_AFTER_SECS)),
-        Ok(v) => v
-            .trim()
-            .parse::<u64>()
-            .map(Duration::from_secs)
-            .map_err(|_| {
-                DrmError::Config(format!(
-                    "CONTRAST_EXIT_AFTER={v} は秒数（整数）ではありません"
-                ))
-            }),
+        Err(_) => Ok(Some(Duration::from_secs(DEFAULT_EXIT_AFTER_SECS))),
+        Ok(v) => match v.trim().parse::<u64>() {
+            Ok(0) => Ok(None),
+            Ok(secs) => Ok(Some(Duration::from_secs(secs))),
+            Err(_) => Err(DrmError::Config(format!(
+                "CONTRAST_EXIT_AFTER={v} は秒数（整数）ではありません"
+            ))),
+        },
     }
 }
 
-/// DRM で出力を列挙し、最初の接続済み出力に `background`（RGBA）の単色を出す。終了まで戻らない。
-pub fn run(background: [f32; 4]) -> Result<(), DrmError> {
+/// DRM の出力・描画・入力をイベントループに登録する。最初のフレームを出した状態で戻る。
+pub fn init(
+    event_loop: &mut EventLoop<'static, Contrast>,
+    state: &mut Contrast,
+) -> Result<DrmGuard, DrmError> {
     let exit_after = exit_after()?;
 
-    let (mut session, notifier) =
+    let (mut session, session_notifier) =
         LibSeatSession::new().map_err(|e| DrmError::Session(e.to_string()))?;
     let seat = session.seat();
     tracing::info!(seat = %seat, active = session.is_active(), "drm: session opened");
-
-    let mut event_loop: EventLoop<'static, App> =
-        EventLoop::try_new().map_err(|e| DrmError::EventLoop(e.to_string()))?;
-    let handle = event_loop.handle();
-    handle
-        .insert_source(notifier, |event, _, app| match event {
-            SessionEvent::ActivateSession => app.resume(),
-            SessionEvent::PauseSession => app.pause(),
-        })
-        .map_err(|e| DrmError::EventLoop(e.to_string()))?;
-    let signals = Signals::new(&[Signal::SIGINT, Signal::SIGTERM])
-        .map_err(|e| DrmError::EventLoop(e.to_string()))?;
-    handle
-        .insert_source(signals, |event, _, app| {
-            tracing::info!("drm: signal {:?}, exiting", event.signal());
-            app.signal.stop();
-        })
-        .map_err(|e| DrmError::EventLoop(e.to_string()))?;
 
     let target = enumerate(&mut session, &seat)?;
     tracing::info!(
@@ -359,67 +429,172 @@ pub fn run(background: [f32; 4]) -> Result<(), DrmError> {
         target.name,
         format_mode(&target.mode)
     );
-    let gpu = open_gpu(&mut session, &target)?;
+    let output = create_output(state, &target)?;
+    let (gpu, drm_notifier) = open_gpu(&mut session, &target, &output)?;
 
-    let mut app = App {
+    // libinput: session 経由でデバイスを開き、この seat に割り当てる。
+    let mut libinput =
+        Libinput::new_with_udev::<LibinputSessionInterface<LibSeatSession>>(session.clone().into());
+    libinput
+        .udev_assign_seat(&seat)
+        .map_err(|()| DrmError::Input(format!("udev_assign_seat({seat}) failed")))?;
+    let input_backend = LibinputInputBackend::new(libinput.clone());
+
+    let handle = event_loop.handle();
+    let drm: Shared = Rc::new(RefCell::new(Drm {
         gpu: Some(gpu),
-        _session: session,
+        _session: session.clone(),
+        output: output.clone(),
+        cursor: SolidColorBuffer::default(),
+        libinput,
         handle: handle.clone(),
-        signal: event_loop.get_signal(),
-        background,
-        active: true,
+        active: session.is_active(),
         frames: 0,
         last_log: Instant::now(),
         error: None,
-    };
-    register_device_events(&mut app, &handle)?;
+    }));
+    // ここから先の失敗は、guard の Drop が GPU 資源を片付ける。
+    let guard = DrmGuard { drm: drm.clone() };
 
-    // 終了タイマーと、最初の page flip の見張り。
-    handle
-        .insert_source(Timer::from_duration(exit_after), move |_, _, app| {
-            tracing::info!("drm: exit after {}", exit_after.as_secs());
-            app.signal.stop();
-            TimeoutAction::Drop
-        })
-        .map_err(|e| DrmError::EventLoop(e.to_string()))?;
-    handle
-        .insert_source(Timer::from_duration(FIRST_FLIP_TIMEOUT), |_, _, app| {
-            if app.frames == 0 && app.active && app.error.is_none() {
-                app.fail(DrmError::FlipTimeout);
-            }
-            TimeoutAction::Drop
-        })
-        .map_err(|e| DrmError::EventLoop(e.to_string()))?;
+    // VT 切り替え: キー処理が `pending_vt` を立てると、この関数が呼ばれる。
+    let mut vt_session = session;
+    state.vt_switch = Some(Box::new(move |vt| {
+        tracing::info!(vt, "drm: switching vt");
+        if let Err(e) = vt_session.change_vt(vt) {
+            tracing::warn!(vt, "drm: change_vt failed: {e}");
+        }
+    }));
 
-    app.render();
-    if app.error.is_none()
-        && let Err(e) = event_loop.run(None, &mut app, |_| {})
     {
-        app.fail(DrmError::EventLoop(e.to_string()));
+        let shared = drm.clone();
+        handle
+            .insert_source(session_notifier, move |event, _, state| match event {
+                SessionEvent::ActivateSession => {
+                    with(&shared.clone(), |d| d.resume(state, &shared))
+                }
+                SessionEvent::PauseSession => with(&shared.clone(), |d| d.pause()),
+            })
+            .map_err(|e| DrmError::EventLoop(e.to_string()))?;
     }
-    match app.error.take() {
-        Some(e) => Err(e),
-        None => Ok(()),
+    {
+        let shared = drm.clone();
+        handle
+            .insert_source(drm_notifier, move |event, _, state| match event {
+                DrmEvent::VBlank(_) => with(&shared.clone(), |d| d.on_vblank(state, &shared)),
+                DrmEvent::Error(e) => with(&shared.clone(), |d| {
+                    d.fail(state, DrmError::Frame(e.to_string()))
+                }),
+            })
+            .map_err(|e| DrmError::EventLoop(e.to_string()))?;
     }
+    handle
+        .insert_source(input_backend, |event, _, state| {
+            state.process_input_event(event)
+        })
+        .map_err(|e| DrmError::EventLoop(e.to_string()))?;
+    let signals = Signals::new(&[Signal::SIGINT, Signal::SIGTERM])
+        .map_err(|e| DrmError::EventLoop(e.to_string()))?;
+    handle
+        .insert_source(signals, |event, _, state| {
+            tracing::info!("drm: signal {:?}, exiting", event.signal());
+            state.loop_signal.stop();
+        })
+        .map_err(|e| DrmError::EventLoop(e.to_string()))?;
+
+    // 終了タイマー（`0` の明示で無効）と、最初の page flip の見張り。
+    match exit_after {
+        Some(after) => {
+            handle
+                .insert_source(Timer::from_duration(after), move |_, _, state| {
+                    tracing::info!("drm: exit after {}", after.as_secs());
+                    state.loop_signal.stop();
+                    TimeoutAction::Drop
+                })
+                .map_err(|e| DrmError::EventLoop(e.to_string()))?;
+        }
+        None => tracing::warn!("drm: CONTRAST_EXIT_AFTER=0, the exit timer is disabled"),
+    }
+    {
+        let shared = drm.clone();
+        handle
+            .insert_source(
+                Timer::from_duration(FIRST_FLIP_TIMEOUT),
+                move |_, _, state| {
+                    with(&shared.clone(), |d| {
+                        if d.frames == 0 && d.active && d.error.is_none() {
+                            d.fail(state, DrmError::FlipTimeout);
+                        }
+                    });
+                    TimeoutAction::Drop
+                },
+            )
+            .map_err(|e| DrmError::EventLoop(e.to_string()))?;
+    }
+
+    tracing::info!("drm: dmabuf is not supported, wl_shm clients only");
+    center_pointer(state, &output);
+    {
+        let shared = drm.clone();
+        with(&drm, |d| d.render(state, &shared));
+    }
+    if let Ok(mut d) = drm.try_borrow_mut()
+        && let Some(e) = d.error.take()
+    {
+        return Err(e);
+    }
+    Ok(guard)
 }
 
-/// DRM デバイスの vblank イベントを、ループに登録する。
-fn register_device_events(
-    app: &mut App,
-    handle: &LoopHandle<'static, App>,
-) -> Result<(), DrmError> {
-    let notifier = app
-        .gpu
-        .as_mut()
-        .and_then(|g| g.notifier.take())
-        .ok_or_else(|| DrmError::Gpu("DRM device notifier is missing".to_string()))?;
-    handle
-        .insert_source(notifier, |event, _, app| match event {
-            DrmEvent::VBlank(_) => app.on_vblank(),
-            DrmEvent::Error(e) => app.fail(DrmError::Frame(e.to_string())),
-        })
-        .map_err(|e| DrmError::EventLoop(e.to_string()))?;
-    Ok(())
+/// 出力を作り、Wayland のグローバル・Space・core に登録する（スケール 1、論理矩形 = モードサイズ）。
+fn create_output(state: &mut Contrast, target: &Target) -> Result<Output, DrmError> {
+    let mode = output_mode(&target.mode);
+    let output = Output::new(
+        target.name.clone(),
+        PhysicalProperties {
+            size: target.size_mm.into(),
+            subpixel: Subpixel::Unknown,
+            make: "Contrast".into(),
+            model: "DRM".into(),
+        },
+    );
+    let _global = output.create_global::<Contrast>(&state.display_handle);
+    output.change_current_state(
+        Some(mode),
+        Some(Transform::Normal),
+        None,
+        Some((0, 0).into()),
+    );
+    output.set_preferred(mode);
+    state.space.map_output(&output, (0, 0));
+    let rect = Rect::new(0, 0, mode.size.w, mode.size.h)
+        .ok_or_else(|| DrmError::Config(format!("mode size {:?} is not positive", mode.size)))?;
+    state.output_added(&target.name, rect);
+    Ok(output)
+}
+
+/// ポインタを出力の中央に置く。
+fn center_pointer(state: &mut Contrast, output: &Output) {
+    let Some(geo) = state.space.output_geometry(output) else {
+        return;
+    };
+    let Some(pointer) = state.seat.get_pointer() else {
+        return;
+    };
+    let center: Point<f64, Logical> = (
+        f64::from(geo.loc.x) + f64::from(geo.size.w) / 2.0,
+        f64::from(geo.loc.y) + f64::from(geo.size.h) / 2.0,
+    )
+        .into();
+    pointer.motion(
+        state,
+        None,
+        &MotionEvent {
+            location: center,
+            serial: SERIAL_COUNTER.next_serial(),
+            time: 0,
+        },
+    );
+    pointer.frame(state);
 }
 
 /// seat の DRM デバイスを列挙してログに出し、modeset の対象を決める。
@@ -543,8 +718,12 @@ fn pick_crtc(
     })
 }
 
-/// 対象のデバイスを開き、GBM + EGL + GLES の renderer と、出力（modeset はまだしない）を用意する。
-fn open_gpu(session: &mut LibSeatSession, target: &Target) -> Result<Gpu, DrmError> {
+/// 対象のデバイスを開き、GBM + EGL + GLES の renderer と、出力を用意する。最初の commit（modeset）はまだしない。
+fn open_gpu(
+    session: &mut LibSeatSession,
+    target: &Target,
+    output: &Output,
+) -> Result<(Gpu, DrmDeviceNotifier), DrmError> {
     let flags = OFlags::RDWR | OFlags::CLOEXEC | OFlags::NOCTTY | OFlags::NONBLOCK;
     let fd = session
         .open(&target.path, flags)
@@ -592,37 +771,26 @@ fn open_gpu(session: &mut LibSeatSession, target: &Target) -> Result<Gpu, DrmErr
         render_formats,
     );
 
-    let mode = output_mode(&target.mode);
-    let output = Output::new(
-        target.name.clone(),
-        PhysicalProperties {
-            size: target.size_mm.into(),
-            subpixel: Subpixel::Unknown,
-            make: "Contrast".into(),
-            model: "DRM".into(),
-        },
-    );
-    output.set_preferred(mode);
-    output.change_current_state(Some(mode), None, None, Some((0, 0).into()));
-
     let handle = manager
-        .initialize_output::<_, SolidColorRenderElement>(
+        .initialize_output::<_, SceneElement>(
             target.crtc,
             target.mode,
             &[target.connector],
-            &output,
+            output,
             None,
             &mut renderer,
             &DrmOutputRenderElements::default(),
         )
         .map_err(|e| DrmError::Modeset(e.to_string()))?;
 
-    Ok(Gpu {
-        output: Some(handle),
-        manager: Some(manager),
-        renderer: Some(renderer),
-        notifier: Some(notifier),
-    })
+    Ok((
+        Gpu {
+            output: Some(handle),
+            manager: Some(manager),
+            renderer: Some(renderer),
+        },
+        notifier,
+    ))
 }
 
 /// DRM のモードを、出力のモード（サイズと mHz）にする。

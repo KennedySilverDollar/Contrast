@@ -16,4 +16,4 @@ calloop = { version = "=0.14.5", default-features = false, features = ["signals"
 version = "=0.7.0"
 default-features = false
 # backend_session_libseat / backend_udev / backend_drm: DRM バックエンド（列挙）。backend_gbm / backend_egl / renderer_gl: modeset と GLES 描画（フェーズ2）。
-features = ["backend_winit", "wayland_frontend", "desktop", "backend_session_libseat", "backend_udev", "backend_drm", "backend_gbm", "backend_egl", "renderer_gl"]
+features = ["backend_winit", "wayland_frontend", "desktop", "backend_session_libseat", "backend_udev", "backend_drm", "backend_gbm", "backend_egl", "renderer_gl", "backend_libinput"]
