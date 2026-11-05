@@ -222,6 +222,18 @@ pub fn load_or_builtin(
 }
 
 impl Policy for ConfigStore {
+    fn appearance(&self) -> crate::Appearance {
+        self.config().settings.appearance.clone()
+    }
+
+    fn layout_settings(&self) -> crate::LayoutSettings {
+        self.config().settings.layout
+    }
+
+    fn cursor_settings(&self) -> crate::CursorSettings {
+        self.config().settings.cursor.clone()
+    }
+
     fn input_settings(&self) -> crate::InputSettings {
         self.config().settings.input
     }

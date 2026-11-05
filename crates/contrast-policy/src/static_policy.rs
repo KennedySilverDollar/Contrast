@@ -42,6 +42,18 @@ impl StaticPolicy {
 }
 
 impl Policy for StaticPolicy {
+    fn appearance(&self) -> crate::Appearance {
+        self.store.appearance()
+    }
+
+    fn layout_settings(&self) -> crate::LayoutSettings {
+        self.store.layout_settings()
+    }
+
+    fn cursor_settings(&self) -> crate::CursorSettings {
+        self.store.cursor_settings()
+    }
+
     fn input_settings(&self) -> crate::InputSettings {
         self.store.input_settings()
     }

@@ -26,6 +26,9 @@ pub use config::{
 pub use core_adapter::PortPlacement;
 pub use hook::{HookPlacement, PlacementHook, WindowInfo};
 pub use port::{Action, Mods, Policy, WindowPlacement};
-pub use settings::{Appearance, InputSettings, KeyBinding, KeySpec, ModKey, Settings};
+pub use settings::{
+    Appearance, CursorSettings, InputSettings, KeyBinding, KeySpec, LayoutSettings, ModKey,
+    Settings, Shadow,
+};
 pub use static_policy::{StaticPolicy, default_placement};
 pub use store::{Config, ConfigStore, ReloadOutcome, StartupStatus, load_or_builtin};

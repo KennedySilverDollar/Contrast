@@ -7,7 +7,7 @@
 use std::collections::BTreeMap;
 
 use cdl_host::{Node, Px, Rgba};
-use contrast_policy::settings::{MAX_BORDER_WIDTH, MAX_WORKSPACES, rgba8};
+use contrast_policy::settings::{MAX_BORDER_WIDTH, MAX_DECORATION_PX, MAX_WORKSPACES, rgba8};
 use contrast_policy::{Action, ConfigDiagnostic, KeyBinding, KeySpec, ModKey, Settings, codes};
 
 use crate::diag::{at, convert};
@@ -104,6 +104,8 @@ pub(crate) fn to_settings(
         match child.name() {
             "Appearance" => read_appearance(&mut cx, child, &mut settings),
             "Workspaces" => read_workspaces(&mut cx, child, &mut settings),
+            "Layout" => read_layout(&mut cx, child, &mut settings),
+            "Cursor" => read_cursor(&mut cx, child, &mut settings),
             "Input" => read_input(&mut cx, child, &mut settings),
             "Keybind" => keybind_nodes.push(child),
             other => cx.error(
@@ -199,6 +201,86 @@ fn read_appearance(cx: &mut Ctx<'_>, node: Node<'_>, settings: &mut Settings) {
     }
     if let Some(Rgba(c)) = cx.optional::<Rgba>(node, "background") {
         settings.appearance.background = rgba8(c);
+    }
+    if let Some(v) = optional_px(cx, node, "radius") {
+        settings.appearance.radius = v;
+    }
+    if let Some(v) = optional_px(cx, node, "shadowBlur") {
+        settings.appearance.shadow.blur = v;
+    }
+    if let Some(v) = optional_offset(cx, node, "shadowOffsetX") {
+        settings.appearance.shadow.offset_x = v;
+    }
+    if let Some(v) = optional_offset(cx, node, "shadowOffsetY") {
+        settings.appearance.shadow.offset_y = v;
+    }
+    if let Some(Rgba(c)) = cx.optional::<Rgba>(node, "shadowColor") {
+        settings.appearance.shadow.color = rgba8(c);
+    }
+    if let Some(v) = optional_px(cx, node, "inactiveBorderWidth") {
+        settings.appearance.inactive_border_width = Some(v);
+    }
+}
+
+/// 長さの prop（省略可）を、0〜`MAX_DECORATION_PX` の整数 px で読む。範囲外は診断を足して `None`。
+/// 影のずれは負も使えるので、`optional_offset` を使う。
+fn optional_px(cx: &mut Ctx<'_>, node: Node<'_>, key: &str) -> Option<i32> {
+    let Px(v) = cx.optional::<Px>(node, key)?;
+    let max = u32::try_from(MAX_DECORATION_PX).unwrap_or(0);
+    match integer_in(v, 0, max).and_then(|n| i32::try_from(n).ok()) {
+        Some(n) => Some(n),
+        None => {
+            cx.error(
+                node,
+                codes::BAD_PROP,
+                format!("`{key}` は 0〜{MAX_DECORATION_PX}px の整数（{v}px は使えない）"),
+            );
+            None
+        }
+    }
+}
+
+/// 長さの prop（省略可）を、-`MAX_DECORATION_PX`〜`MAX_DECORATION_PX` の整数 px で読む（影のずれ用）。範囲外は診断を足して `None`。
+fn optional_offset(cx: &mut Ctx<'_>, node: Node<'_>, key: &str) -> Option<i32> {
+    let Px(v) = cx.optional::<Px>(node, key)?;
+    let max = f64::from(MAX_DECORATION_PX);
+    if v.is_finite() && v.fract() == 0.0 && (-max..=max).contains(&v) {
+        return Some(v as i32);
+    }
+    cx.error(
+        node,
+        codes::BAD_PROP,
+        format!(
+            "`{key}` は -{MAX_DECORATION_PX}〜{MAX_DECORATION_PX}px の整数（{v}px は使えない）"
+        ),
+    );
+    None
+}
+
+/// `Layout` を読む。
+fn read_layout(cx: &mut Ctx<'_>, node: Node<'_>, settings: &mut Settings) {
+    if let Some(v) = optional_px(cx, node, "gap") {
+        settings.layout.gap = v;
+    }
+    if let Some(v) = optional_px(cx, node, "outerGap") {
+        settings.layout.outer_gap = v;
+    }
+}
+
+/// `Cursor` を読む。`size` は 8〜256 の整数。
+fn read_cursor(cx: &mut Ctx<'_>, node: Node<'_>, settings: &mut Settings) {
+    if let Some(theme) = cx.optional::<String>(node, "theme") {
+        settings.cursor.theme = Some(theme).filter(|t| !t.trim().is_empty());
+    }
+    if let Some(size) = cx.optional::<f64>(node, "size") {
+        match integer_in(size, 8, 256) {
+            Some(n) => settings.cursor.size = Some(n),
+            None => cx.error(
+                node,
+                codes::BAD_PROP,
+                format!("`size` は 8〜256 の整数（{size} は使えない）"),
+            ),
+        }
     }
 }
 

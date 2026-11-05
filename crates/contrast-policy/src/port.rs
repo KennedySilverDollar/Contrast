@@ -85,6 +85,21 @@ pub trait Policy {
     /// ワークスペースの数（1 以上）。
     fn workspace_count(&self) -> u8;
 
+    /// 見た目の設定（角丸・影・枠など）。
+    fn appearance(&self) -> crate::Appearance {
+        crate::Settings::builtin().appearance
+    }
+
+    /// 窓の隙間の設定。
+    fn layout_settings(&self) -> crate::LayoutSettings {
+        crate::LayoutSettings::default()
+    }
+
+    /// カーソルの設定。
+    fn cursor_settings(&self) -> crate::CursorSettings {
+        crate::CursorSettings::default()
+    }
+
     /// 入力デバイス（タッチパッドなど）の設定。
     fn input_settings(&self) -> crate::InputSettings {
         crate::InputSettings::default()

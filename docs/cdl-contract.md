@@ -10,12 +10,21 @@ CDL 側の仕様は CDL リポジトリの `docs/SPEC.md`（6・8・9 章）と 
 
 | 要素 | props | 子 | 一意 |
 | --- | --- | --- | --- |
-| `Contrast` | `modKey?: "alt" \| "super"`（省略時は下記の優先順位で決まる） | `Appearance` \| `Workspaces` \| `Input` \| `Keybind` | `Appearance`、`Workspaces`、`Input` |
-| `Appearance` | `borderWidth: Length`、`focusColor: Color`、`borderColor?: Color`、`background?: Color` | なし | — |
+| `Contrast` | `modKey?: "alt" \| "super"`（省略時は下記の優先順位で決まる） | `Appearance` \| `Workspaces` \| `Layout` \| `Cursor` \| `Input` \| `Keybind` | `Appearance`、`Workspaces`、`Layout`、`Cursor`、`Input` |
+| `Appearance` | `borderWidth: Length`、`focusColor: Color`、`borderColor?: Color`、`background?: Color`、`radius?: Length`、`shadowBlur?: Length`、`shadowOffsetX?: Length`、`shadowOffsetY?: Length`、`shadowColor?: Color`、`inactiveBorderWidth?: Length` | なし | — |
 | `Workspaces` | `count: number`（整数、1〜32） | なし | — |
+| `Layout` | `gap?: Length`、`outerGap?: Length` | なし | — |
+| `Cursor` | `theme?: string`、`size?: number` | なし | — |
 | `Input` | `tapToClick?: boolean`（既定 true）、`naturalScroll?: boolean`（既定 false）、`accelSpeed?: number`（-1〜1、既定 0）、`disableWhileTyping?: boolean`（既定 true） | なし | — |
 | `Keybind` | `keys: string`、`action: string`、`command?: string`、`workspace?: number` | なし | — |
 
+- 見た目の追加 prop はすべて省略でき、省略時は今の見た目と同じ（角丸 0・影なし・隙間 0・非フォーカスの枠の幅は `borderWidth`）。
+  - `gap` は窓と窓の間、`outerGap` は出力の端と窓の間（px）。core の矩形は変えず、描画側で縮める。
+  - `radius` は窓と枠の角丸の半径。`shadowBlur` が 0 のとき影は描かない。`shadowOffsetX/Y` は負も使える。
+  - `inactiveBorderWidth` はフォーカス外の窓の枠の太さ。窓の大きさは常に `borderWidth` で決まる（フォーカスで大きさは変わらない）。
+    `borderColor` が無いとフォーカス外の枠は描かない。
+  - 長さの範囲は 0〜512 の整数 px（`shadowOffsetX/Y` は -512〜512）。外れると CT003。`Cursor.size` は 8〜256 の整数。
+  - `Cursor` は環境変数 `XCURSOR_THEME` / `XCURSOR_SIZE` より優先する。リロードで更新する。
 - `Input` はタッチパッドの設定。libinput のデバイスが追加されたとき（起動時の既存デバイスを含む）とリロードのときに、タッチパッドに適用する。
   デバイスが対応しない項目はログに出して無視する。`accelSpeed` が -1〜1 の外（または非数）なら CT003。
 - `Appearance`、`Workspaces`、`Input` を省略したときは `Settings::builtin()` の値を使う。

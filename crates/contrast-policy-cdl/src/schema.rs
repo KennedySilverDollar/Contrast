@@ -27,9 +27,18 @@ pub(crate) fn contrast_schema() -> Result<Schema, Vec<String>> {
             MODULE,
             ComponentDef::new("Contrast")
                 .optional_prop("modKey", Ty::String)
-                .children(&["Appearance", "Workspaces", "Input", "Keybind"])
+                .children(&[
+                    "Appearance",
+                    "Workspaces",
+                    "Layout",
+                    "Cursor",
+                    "Input",
+                    "Keybind",
+                ])
                 .unique_child("Appearance")
                 .unique_child("Workspaces")
+                .unique_child("Layout")
+                .unique_child("Cursor")
                 .unique_child("Input"),
         )
         .component(
@@ -38,7 +47,25 @@ pub(crate) fn contrast_schema() -> Result<Schema, Vec<String>> {
                 .prop("borderWidth", Ty::Length)
                 .prop("focusColor", Ty::Color)
                 .optional_prop("borderColor", Ty::Color)
-                .optional_prop("background", Ty::Color),
+                .optional_prop("background", Ty::Color)
+                .optional_prop("radius", Ty::Length)
+                .optional_prop("shadowBlur", Ty::Length)
+                .optional_prop("shadowOffsetX", Ty::Length)
+                .optional_prop("shadowOffsetY", Ty::Length)
+                .optional_prop("shadowColor", Ty::Color)
+                .optional_prop("inactiveBorderWidth", Ty::Length),
+        )
+        .component(
+            MODULE,
+            ComponentDef::new("Layout")
+                .optional_prop("gap", Ty::Length)
+                .optional_prop("outerGap", Ty::Length),
+        )
+        .component(
+            MODULE,
+            ComponentDef::new("Cursor")
+                .optional_prop("theme", Ty::String)
+                .optional_prop("size", Ty::Number),
         )
         .component(
             MODULE,

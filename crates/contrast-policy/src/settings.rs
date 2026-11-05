@@ -81,7 +81,58 @@ pub struct Appearance {
     pub border_color: Option<[f32; 4]>,
     /// 背景色。
     pub background: [f32; 4],
+    /// 窓と枠の角の丸め半径（px、0 で角丸なし）。
+    pub radius: i32,
+    /// 窓の影。`blur` が 0 なら描かない。
+    pub shadow: Shadow,
+    /// フォーカス外の窓の枠の太さ（px）。`None` なら `border_width` と同じ。窓の大きさは `border_width` で決まる。
+    pub inactive_border_width: Option<i32>,
 }
+
+/// 窓の影。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Shadow {
+    /// ぼかしの幅（px）。0 で影なし。
+    pub blur: i32,
+    /// 影の横のずれ（px）。
+    pub offset_x: i32,
+    /// 影の縦のずれ（px）。
+    pub offset_y: i32,
+    /// 影の色（RGBA）。
+    pub color: [f32; 4],
+}
+
+impl Default for Shadow {
+    fn default() -> Self {
+        Self {
+            blur: 0,
+            offset_x: 0,
+            offset_y: 0,
+            color: [0.0, 0.0, 0.0, 0.5],
+        }
+    }
+}
+
+/// 窓の並べ方の隙間。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct LayoutSettings {
+    /// 窓と窓の間（px）。
+    pub gap: i32,
+    /// 出力の端と窓の間（px）。
+    pub outer_gap: i32,
+}
+
+/// カーソルの設定。`None` は「設定なし」（環境変数 `XCURSOR_THEME` / `XCURSOR_SIZE`、無ければ既定）。
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct CursorSettings {
+    /// xcursor のテーマ名。
+    pub theme: Option<String>,
+    /// カーソルの大きさ（px）。
+    pub size: Option<u32>,
+}
+
+/// 隙間・角丸などの上限（px）。
+pub const MAX_DECORATION_PX: i32 = 512;
 
 /// タッチパッドなどの入力設定。libinput のデバイスに適用する（デバイスが対応しない項目は無視される）。
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -118,6 +169,10 @@ pub struct Settings {
     pub workspaces: u8,
     /// 入力デバイスの設定。
     pub input: InputSettings,
+    /// 窓の隙間。
+    pub layout: LayoutSettings,
+    /// カーソル。
+    pub cursor: CursorSettings,
     /// キーバインド（並びの順）。
     pub keybinds: Vec<KeyBinding>,
 }
@@ -161,9 +216,14 @@ impl Settings {
                 focus_color: rgba8([0x66, 0xa6, 0xff, 0xff]),
                 border_color: None,
                 background: rgba8([0x1f, 0x24, 0x33, 0xff]),
+                radius: 0,
+                shadow: Shadow::default(),
+                inactive_border_width: None,
             },
             workspaces: 4,
             input: InputSettings::default(),
+            layout: LayoutSettings::default(),
+            cursor: CursorSettings::default(),
             keybinds,
         }
     }
