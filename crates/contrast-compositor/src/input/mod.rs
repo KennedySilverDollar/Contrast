@@ -16,6 +16,7 @@ use smithay::{
     },
     reexports::wayland_server::protocol::wl_surface::WlSurface,
     utils::{Logical, Point, SERIAL_COUNTER},
+    wayland::input_method::InputMethodSeat,
 };
 
 use contrast_policy::{Action, Mods};
@@ -182,6 +183,12 @@ impl Contrast {
     fn on_key(&mut self, keycode: xkb::Keycode, key_state: KeyState, time: u32) {
         let serial = SERIAL_COUNTER.next_serial();
         let keyboard = self.seat.get_keyboard().expect("seat has keyboard");
+        // 入力メソッドが消えたのにグラブだけ残ると、キーボードが止まる。Smithay が外すはずだが、念のためここでも外す。
+        // （コンポジタのバインドと VT 切り替えは、次の `input` のフィルタで、グラブより先に処理される。）
+        if keyboard.is_grabbed() && !self.seat.input_method().keyboard_grabbed() {
+            tracing::warn!("ime: a keyboard grab is left without an input method, releasing it");
+            keyboard.unset_grab(self);
+        }
         let action = keyboard.input::<Option<Action>, _>(
             self,
             keycode,

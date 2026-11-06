@@ -13,6 +13,8 @@ use smithay::reexports::calloop::{
     channel::{self, Event},
 };
 
+use smithay::wayland::input_method::InputMethodSeat;
+
 use contrast_policy::Mods;
 
 use crate::state::Contrast;
@@ -97,6 +99,12 @@ impl Contrast {
                     shown_workspace = ?shown.map(|i| i.get() + 1),
                     focused = ?view.focus().map(|id| id.raw()),
                     "debug state"
+                );
+                tracing::info!(
+                    keyboard_grabbed = self.seat.get_keyboard().is_some_and(|k| k.is_grabbed()),
+                    input_method_grab = self.seat.input_method().keyboard_grabbed(),
+                    ime_popups = self.ime_popups.len(),
+                    "debug state ime"
                 );
             }
             _ => tracing::warn!(line, "debug: unknown command"),
