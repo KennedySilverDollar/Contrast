@@ -290,7 +290,7 @@ layer-shell のバーなどが確保する領域を、出力の作業領域か�
 12 節（`Scrolling`）に、列の中の窓の高さと、列のセンタリングを足す。配分の規則は、niri の動作の完全な再現ではなく、決定的で単純な暫定の規則（使って合わなければ、ここを直す）。
 
 - **D49 型と設定**: `WindowHeight::{Auto, Proportion(Ratio), Fixed(i32)}`（`WindowHeight::fixed(px) -> Option<WindowHeight>`、px は 1 以上）。`CoreConfig::with_preset_window_heights(Vec<Ratio>)`（既定 1/3・1/2・2/3。空なら既定のまま）。窓は高さを持つ（既定 `Auto`）。
-- **D50 配分**: 列の窓を上から順に、列の高さ H（作業領域の高さ）を配る。Auto が 1 つもなければ、一番下の窓を Auto とみなす。`Proportion(r)` の要求は `H × r`（切り捨て、1 以上）、`Fixed(px)` は px。Auto でない窓は、残りの高さから「後ろに続く窓の数 × 1 px」を引いた値を上限に、要求の高さを取る。Auto の窓は、残りを等分する（余りは上から 1 px ずつ）。どの窓も高さは 1 以上で、合計は H になる（窓の数が H 以下のとき）。
+- **D50 配分**: 列の窓を上から順に、列の高さ H（作業領域の高さ）を配る。Auto が 1 つもなければ、一番下の窓を Auto とみなす。`Proportion(r)` の要求は `H × r`（切り捨て、1 以上）、`Fixed(px)` は px。Auto でない窓は、残りの高さから「まだ高さを決めていない他の窓の数 × 1 px」を引いた値を上限に、要求の高さを取る。Auto の窓は、残りを等分する（余りは上から 1 px ずつ）。どの窓も高さは 1 以上で、合計は H になる（窓の数が H 以下のとき）。
 - **D51 新しい Action**: `SetWindowHeight(WindowHeight)`（フォーカス窓の高さを設定。`Auto` はリセットと同じ）、`SwitchPresetWindowHeight`（フォーカス窓の現在の px の高さより高い最初のプリセットへ。なければ先頭へ）、`ResetWindowHeight`（`Auto` に戻す）、`CenterColumn`。
 - **D52 窓の移動と高さ**: 窓が別の列へ移る（Consume・Expel など）とき、その窓の高さは `Auto` に戻る。同じ列の中での入れ替えでは、高さは窓についていく。
 - **D53 CenterColumn**: フォーカス列の中心を作業領域の中心に合わせる `view_x` にする（`列の x + 列の幅 / 2 − 作業領域の幅 / 2`）。D39 のクランプ（0 以上、`max(0, 総幅 − 作業領域の幅)` 以下）を適用する。結果が今の `view_x` と同じなら、状態不変で Ok。ほかの操作では、D39 の最小のスクロールのまま。
