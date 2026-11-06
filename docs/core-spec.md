@@ -284,3 +284,16 @@ layer-shell のバーなどが確保する領域を、出力の作業領域か�
 - **手段**: lint（`unsafe_code` の forbid、clippy の deny、`disallowed-types` / `disallowed-methods`）、設計（`HashMap` / `HashSet` を使わない、時刻・環境に触れない）、proptest（既存の `tests/spec`）。Kani と cargo-fuzz は使わない。
 - **実行**: 日常は、変更した厳格 crate だけを `-p` で `clippy` と `test` にかける。区切り（マージの前）で、ワークスペース全体を検査する。
 - **実機 TTY の確認**は、区切りで 1 回にまとめる。確認項目は少なくする。
+
+## 14. 窓の高さと center-column（N3b。12 節の続き）
+
+12 節（`Scrolling`）に、列の中の窓の高さと、列のセンタリングを足す。配分の規則は、niri の動作の完全な再現ではなく、決定的で単純な暫定の規則（使って合わなければ、ここを直す）。
+
+- **D49 型と設定**: `WindowHeight::{Auto, Proportion(Ratio), Fixed(i32)}`（`WindowHeight::fixed(px) -> Option<WindowHeight>`、px は 1 以上）。`CoreConfig::with_preset_window_heights(Vec<Ratio>)`（既定 1/3・1/2・2/3。空なら既定のまま）。窓は高さを持つ（既定 `Auto`）。
+- **D50 配分**: 列の窓を上から順に、列の高さ H（作業領域の高さ）を配る。Auto が 1 つもなければ、一番下の窓を Auto とみなす。`Proportion(r)` の要求は `H × r`（切り捨て、1 以上）、`Fixed(px)` は px。Auto でない窓は、残りの高さから「後ろに続く窓の数 × 1 px」を引いた値を上限に、要求の高さを取る。Auto の窓は、残りを等分する（余りは上から 1 px ずつ）。どの窓も高さは 1 以上で、合計は H になる（窓の数が H 以下のとき）。
+- **D51 新しい Action**: `SetWindowHeight(WindowHeight)`（フォーカス窓の高さを設定。`Auto` はリセットと同じ）、`SwitchPresetWindowHeight`（フォーカス窓の現在の px の高さより高い最初のプリセットへ。なければ先頭へ）、`ResetWindowHeight`（`Auto` に戻す）、`CenterColumn`。
+- **D52 窓の移動と高さ**: 窓が別の列へ移る（Consume・Expel など）とき、その窓の高さは `Auto` に戻る。同じ列の中での入れ替えでは、高さは窓についていく。
+- **D53 CenterColumn**: フォーカス列の中心を作業領域の中心に合わせる `view_x` にする（`列の x + 列の幅 / 2 − 作業領域の幅 / 2`）。D39 のクランプ（0 以上、`max(0, 総幅 − 作業領域の幅)` 以下）を適用する。結果が今の `view_x` と同じなら、状態不変で Ok。ほかの操作では、D39 の最小のスクロールのまま。
+- **D54 Equal**: 上の 4 つの Action は、`Equal` では、状態不変で Ok（Effect なし）。
+- **D55 不変条件**: I10 に「列の中の窓の高さの合計は、作業領域の高さに等しい」を足す（窓の数が高さ以下のとき）。
+- **D56 N3b に含めないもの**: `center-focused-column` の設定（always・on-overflow）、複数窓の高さの比の保存（niri の auto の重み）。

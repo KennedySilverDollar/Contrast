@@ -1,4 +1,4 @@
-//! スクロール列レイアウトの N3b: 窓の高さと center-column（core-spec 13 節、D49〜D56）。
+//! スクロール列レイアウトの N3b: 窓の高さと center-column（core-spec 14 節、D49〜D56）。
 //! 出力は幅 900 × 高さ 600。列の幅は 450。窓はキー 11 から。`stacked(n)` は n 枚を 1 つの列に積み、フォーカスは 11。
 use std::collections::BTreeMap;
 
