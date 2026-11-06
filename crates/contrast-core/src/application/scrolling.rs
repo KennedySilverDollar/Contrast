@@ -146,6 +146,24 @@ pub fn shown_area_width(state: &State, index: WorkspaceIndex) -> Option<i32> {
     output.work_area().ok().map(|a| a.width())
 }
 
+/// ワークスペース `index` を表示している出力の作業領域。出力がなければ `None`。
+#[must_use]
+pub fn shown_area(state: &State, index: WorkspaceIndex) -> Option<Rect> {
+    let output = state
+        .output_showing(index)
+        .and_then(|o| state.outputs.get(&o))?;
+    output.work_area().ok()
+}
+
+/// D53: 列（左端 `left`、幅 `width`）の中心を作業領域の中心に合わせるビューの左端。
+/// 列の x + 列の幅 / 2 − 作業領域の幅 / 2 を、D39 のクランプ（0 以上、`max(0, 総幅 − 作業領域の幅)` 以下）に収める。
+#[must_use]
+pub fn center_view(left: i32, width: i32, area_width: i32, total: i32) -> i32 {
+    let center = left.saturating_add(width.checked_div(2).unwrap_or(0));
+    let half = area_width.checked_div(2).unwrap_or(0);
+    clamp_view(center.saturating_sub(half), total, area_width)
+}
+
 /// 列の状態を、窓の状態に合わせる（D36・D40・D46・D52、I10）。`Scrolling` のとき、各 handler のあと・`arrange` の前に呼ぶ。
 ///
 /// - Tiled でなくなった窓・消えた窓を列から除き、空の列を除く。
@@ -528,6 +546,20 @@ mod tests {
         assert_eq!(adjust_view(0, 450, 1200, 900, 1650), 450);
         // 幅がちょうど作業領域と同じ列も左端を合わせる。
         assert_eq!(adjust_view(0, 900, 900, 900, 1800), 900);
+    }
+
+    #[test]
+    fn centering_puts_the_column_in_the_middle_and_stays_inside_the_content() {
+        // 列 450〜900（中心 675）を、幅 900 の作業領域の中央（450）に置く: 675 − 450 = 225。
+        assert_eq!(center_view(450, 450, 900, 1350), 225);
+        // 端の列は、内容の端で止まる。
+        assert_eq!(center_view(900, 450, 900, 1350), 450);
+        assert_eq!(center_view(0, 450, 900, 1350), 0);
+        // 内容が作業領域より狭ければ 0。
+        assert_eq!(center_view(450, 450, 900, 900), 0);
+        // 奇数の幅は、切り捨てた半分どうしで引く。
+        assert_eq!(center_view(100, 301, 500, 2000), 0);
+        assert_eq!(center_view(1000, 301, 500, 3000), 900);
     }
 
     #[test]

@@ -121,6 +121,15 @@ impl WindowHeight {
             Self::Proportion(r) => Some(ColumnWidth::Proportion(r).px(area_height)),
         }
     }
+
+    /// 不正な `Fixed`（1 未満）を 1 に直す。
+    #[must_use]
+    pub(crate) fn sanitized(self) -> Self {
+        match self {
+            Self::Fixed(px) => Self::Fixed(px.max(1)),
+            other => other,
+        }
+    }
 }
 
 /// 窓の並べ方。
@@ -174,6 +183,11 @@ impl LayoutSettings {
     /// 設定されているプリセットを順に返す。
     pub fn preset_iter(&self) -> impl Iterator<Item = Ratio> + '_ {
         self.presets.iter().flatten().copied()
+    }
+
+    /// 設定されている窓の高さのプリセットを順に返す（D49）。
+    pub fn window_preset_iter(&self) -> impl Iterator<Item = Ratio> + '_ {
+        self.window_presets.iter().flatten().copied()
     }
 }
 

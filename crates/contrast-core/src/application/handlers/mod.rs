@@ -3,6 +3,7 @@
 //! handler は複製された `State` を `&mut` で受け、Registered / RequestClose だけを返す。
 //! 再配置と残りの Effect は `Core::apply` が行う。Err を返したら複製は捨てられる（I7）。
 
+mod center_column;
 mod close_focused;
 mod consume_window;
 mod expel_window;
@@ -16,7 +17,10 @@ mod output_added;
 mod output_changed;
 mod output_insets_changed;
 mod output_removed;
+mod reset_window_height;
 mod set_column_width;
+mod set_window_height;
+mod switch_preset_height;
 mod switch_preset_width;
 mod switch_workspace;
 mod toggle_floating;
@@ -87,11 +91,11 @@ fn dispatch_action(state: &mut State, action: Action) -> Result<Vec<Effect>, Cor
         Action::SwitchPresetColumnWidth => switch_preset_width::handle(state),
         Action::MaximizeColumn => maximize_column::handle(state),
         Action::SetColumnWidth(width) => set_column_width::handle(state, width),
-        // D51・D54: 窓の高さと CenterColumn。`Equal` では状態不変で `Ok`。`Scrolling` の実装はこのあとのステップで足す。
-        Action::SetWindowHeight(_)
-        | Action::SwitchPresetWindowHeight
-        | Action::ResetWindowHeight
-        | Action::CenterColumn => Ok(Vec::new()),
+        // D51〜D54: 窓の高さと CenterColumn。`Equal` では各 handler が状態不変で `Ok` を返す。
+        Action::SetWindowHeight(height) => set_window_height::handle(state, height),
+        Action::SwitchPresetWindowHeight => switch_preset_height::handle(state),
+        Action::ResetWindowHeight => reset_window_height::handle(state),
+        Action::CenterColumn => center_column::handle(state),
     }
 }
 
