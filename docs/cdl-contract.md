@@ -13,7 +13,7 @@ CDL 側の仕様は CDL リポジトリの `docs/SPEC.md`（6・8・9 章）と 
 | `Contrast` | `modKey?: "alt" \| "super"`（省略時は下記の優先順位で決まる） | `Appearance` \| `Workspaces` \| `Layout` \| `Cursor` \| `Input` \| `Startup` \| `Environment` \| `Keybind` | `Appearance`、`Workspaces`、`Layout`、`Cursor`、`Input`、`Environment` |
 | `Appearance` | `borderWidth: Length`、`focusColor: Color`、`borderColor?: Color`、`background?: Color`、`radius?: Length`、`shadowBlur?: Length`、`shadowOffsetX?: Length`、`shadowOffsetY?: Length`、`shadowColor?: Color`、`inactiveBorderWidth?: Length` | なし | — |
 | `Workspaces` | `count: number`（整数、1〜32） | なし | — |
-| `Layout` | `gap?: Length`、`outerGap?: Length`、`mode?: "equal" \| "scrolling"`（既定 `"equal"`）、`defaultColumnWidth?: number`、`presetColumnWidths?: string` | なし | — |
+| `Layout` | `gap?: Length`、`outerGap?: Length`、`mode?: "equal" \| "scrolling"`（既定 `"equal"`）、`defaultColumnWidth?: number`、`presetColumnWidths?: string`、`animationMs?: number`（既定 0） | なし | — |
 | `Cursor` | `theme?: string`、`size?: number`、`hideAfterInactiveMs?: number` | なし | — |
 | `Input` | `tapToClick?: boolean`（既定 true）、`naturalScroll?: boolean`（既定 false）、`accelSpeed?: number`（-1〜1、既定 0）、`disableWhileTyping?: boolean`（既定 true）、`focusFollowsMouse?: boolean`（既定 false） | なし | — |
 | `Startup` | `command: string` | なし | —（複数可） |
@@ -24,6 +24,13 @@ CDL 側の仕様は CDL リポジトリの `docs/SPEC.md`（6・8・9 章）と 
 - `Layout.mode` はスクロール列レイアウト（core-spec 12 節）を選ぶ。起動時に決まり、リロードでは変わらない（変えるには再起動）。
   `defaultColumnWidth` は新しい列の幅（0 より大きく 1 以下の割合、既定 0.5）。`presetColumnWidths` はプリセットの列幅で、
   割合を空白かコンマで区切って 1〜8 個（既定 `0.33333 0.5 0.66667`）。割合は分母 1000 に丸める。範囲外・不正な書式は CT003。
+- `Layout.animationMs` は窓のアニメーションの長さ（0〜2000 の整数ミリ秒。0 で無効、既定 0）。0 より大きいと、core が決めた窓の行き先の矩形へ、
+  今の矩形から ease-out で近づける。範囲外・非整数は CT003。リロードで更新する。
+  - 移動と大きさの変化: 補間した矩形を、毎フレーム窓に configure する（枠・影・隙間も補間した矩形に従う）。
+    クライアントが追いつくまでの数フレームは、窓の中身と枠にずれが出ることがある。
+  - ワークスペースの切り替え: 新しく見える窓が、番号が大きくなる向きなら下から、小さくなる向きなら上から滑り込む。
+    出ていく窓は補間せず、すぐ消える。
+  - 補間しない: 窓が最初に開くとき、全画面にするとき（全画面から戻るときは全画面の矩形から補間する）、出力の大きさが変わるとき。
 - 見た目の追加 prop はすべて省略でき、省略時は今の見た目と同じ（角丸 0・影なし・隙間 0・非フォーカスの枠の幅は `borderWidth`）。
   - `gap` は窓と窓の間、`outerGap` は出力の端と窓の間（px）。core の矩形は変えず、描画側で縮める。
   - `radius` は窓と枠の角丸の半径。`shadowBlur` が 0 のとき影は描かない。`shadowOffsetX/Y` は負も使える。
@@ -145,4 +152,4 @@ CDL 自身の診断（`E0001`〜）は、そのままのコードで `ConfigDiag
 ## 6. 未実装
 
 - 識別 prop（意味が不明なので実装しない）。
-- ファイル監視、画面上の診断表示、アニメーション、gap・radius。
+- ファイル監視、画面上の診断表示。窓の開閉（出ていく窓・開く窓）のアニメーションと、出ていく窓の補間。

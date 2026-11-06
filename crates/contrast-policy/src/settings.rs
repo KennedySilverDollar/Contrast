@@ -128,7 +128,12 @@ pub struct LayoutSettings {
     pub default_column_width: Option<contrast_core::Ratio>,
     /// プリセットの列幅。空なら core の既定（1/3・1/2・2/3）。
     pub preset_column_widths: Vec<contrast_core::Ratio>,
+    /// 窓の移動・大きさの変化・ワークスペース切替の補間にかける時間（ミリ秒）。0 で補間しない。
+    pub animation_ms: u32,
 }
+
+/// `animation_ms` の上限（ミリ秒）。
+pub const MAX_ANIMATION_MS: u32 = 2000;
 
 /// カーソルの設定。`None` は「設定なし」（環境変数 `XCURSOR_THEME` / `XCURSOR_SIZE`、無ければ既定）。
 #[derive(Debug, Clone, PartialEq, Eq, Default)]

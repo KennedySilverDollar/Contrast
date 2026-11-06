@@ -9,7 +9,8 @@ use std::collections::BTreeMap;
 use cdl_host::{Node, Px, Rgba};
 use contrast_core::{LayoutMode, Ratio};
 use contrast_policy::settings::{
-    MAX_BORDER_WIDTH, MAX_DECORATION_PX, MAX_HIDE_AFTER_INACTIVE_MS, MAX_WORKSPACES, rgba8,
+    MAX_ANIMATION_MS, MAX_BORDER_WIDTH, MAX_DECORATION_PX, MAX_HIDE_AFTER_INACTIVE_MS,
+    MAX_WORKSPACES, rgba8,
 };
 use contrast_policy::{Action, ConfigDiagnostic, KeyBinding, KeySpec, ModKey, Settings, codes};
 
@@ -288,6 +289,16 @@ fn read_layout(cx: &mut Ctx<'_>, node: Node<'_>, settings: &mut Settings) {
                 node,
                 codes::BAD_PROP,
                 format!("`defaultColumnWidth` は 0 より大きく 1 以下の数（{w} は使えない）"),
+            ),
+        }
+    }
+    if let Some(ms) = cx.optional::<f64>(node, "animationMs") {
+        match integer_in(ms, 0, MAX_ANIMATION_MS) {
+            Some(n) => settings.layout.animation_ms = n,
+            None => cx.error(
+                node,
+                codes::BAD_PROP,
+                format!("`animationMs` は 0〜{MAX_ANIMATION_MS} の整数（{ms} は使えない）"),
             ),
         }
     }

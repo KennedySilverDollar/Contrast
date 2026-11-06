@@ -249,3 +249,43 @@ fn plain_scrolling_actions_are_recognised() -> Result<(), String> {
     }
     Ok(())
 }
+
+#[test]
+fn animation_ms_defaults_to_off_and_accepts_the_edges() -> Result<(), String> {
+    let none = load("anim-none", "")?.map_err(|d| format!("{d:?}"))?;
+    assert_eq!(none.layout.animation_ms, 0);
+    for (dir, v, want) in [
+        ("zero", "0", 0),
+        ("niri", "150", 150),
+        ("max", "2000", 2000),
+    ] {
+        let s =
+            load(dir, &format!("<Layout animationMs={{{v}}} />"))?.map_err(|d| format!("{d:?}"))?;
+        assert_eq!(s.layout.animation_ms, want, "{v}");
+        // ほかの項目は既定のまま。
+        assert_eq!(s.layout.gap, 0);
+    }
+    Ok(())
+}
+
+#[test]
+fn bad_animation_ms_is_ct003() -> Result<(), String> {
+    for (dir, v) in [("negative", "-1"), ("fraction", "1.5"), ("over", "2001")] {
+        let r = load(dir, &format!("<Layout animationMs={{{v}}} />"))?;
+        assert_eq!(r.err(), Some(vec!["CT003".to_owned()]), "{v}");
+    }
+    Ok(())
+}
+
+#[test]
+fn niri_example_animates() -> Result<(), String> {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/niri.cdl");
+    match CdlLoader::new().load(&path) {
+        LoadOutcome::Loaded(c) => {
+            assert_eq!(c.settings.layout.animation_ms, 150);
+            Ok(())
+        }
+        LoadOutcome::Failed(d) => Err(format!("{d:?}")),
+        LoadOutcome::Absent => Err("niri.cdl が無い".to_owned()),
+    }
+}
