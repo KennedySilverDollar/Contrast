@@ -93,6 +93,9 @@ pub struct WindowPlacement {
     pub state: WindowState,
     /// 配置先が表示中ならフォーカスを与えるか。
     pub focus: bool,
+    /// 開いた直後に全画面にするか。core の配置は Tiled / Floating までなので、コンポジタが配置のあとに
+    /// `ToggleFullscreen` を送る（窓がフォーカスを得たときだけ効く）。
+    pub fullscreen: bool,
 }
 
 /// コンポジタがポリシーに問い合わせる口。
@@ -131,6 +134,16 @@ pub trait Policy {
     /// 入力デバイス（タッチパッドなど）の設定。
     fn input_settings(&self) -> crate::InputSettings {
         crate::InputSettings::default()
+    }
+
+    /// 起動時に一度だけ実行するコマンド。
+    fn startup_commands(&self) -> Vec<String> {
+        Vec::new()
+    }
+
+    /// spawn する子プロセスに足す環境変数（名前順）。
+    fn environment(&self) -> Vec<(String, String)> {
+        Vec::new()
     }
 
     /// 作業領域 `area` に `count` 個の窓を並べた矩形を、並び順に返す。

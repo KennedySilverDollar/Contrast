@@ -10,12 +10,15 @@ CDL 側の仕様は CDL リポジトリの `docs/SPEC.md`（6・8・9 章）と 
 
 | 要素 | props | 子 | 一意 |
 | --- | --- | --- | --- |
-| `Contrast` | `modKey?: "alt" \| "super"`（省略時は下記の優先順位で決まる） | `Appearance` \| `Workspaces` \| `Layout` \| `Cursor` \| `Input` \| `Keybind` | `Appearance`、`Workspaces`、`Layout`、`Cursor`、`Input` |
+| `Contrast` | `modKey?: "alt" \| "super"`（省略時は下記の優先順位で決まる） | `Appearance` \| `Workspaces` \| `Layout` \| `Cursor` \| `Input` \| `Startup` \| `Environment` \| `Keybind` | `Appearance`、`Workspaces`、`Layout`、`Cursor`、`Input`、`Environment` |
 | `Appearance` | `borderWidth: Length`、`focusColor: Color`、`borderColor?: Color`、`background?: Color`、`radius?: Length`、`shadowBlur?: Length`、`shadowOffsetX?: Length`、`shadowOffsetY?: Length`、`shadowColor?: Color`、`inactiveBorderWidth?: Length` | なし | — |
 | `Workspaces` | `count: number`（整数、1〜32） | なし | — |
 | `Layout` | `gap?: Length`、`outerGap?: Length`、`mode?: "equal" \| "scrolling"`（既定 `"equal"`）、`defaultColumnWidth?: number`、`presetColumnWidths?: string` | なし | — |
-| `Cursor` | `theme?: string`、`size?: number` | なし | — |
-| `Input` | `tapToClick?: boolean`（既定 true）、`naturalScroll?: boolean`（既定 false）、`accelSpeed?: number`（-1〜1、既定 0）、`disableWhileTyping?: boolean`（既定 true） | なし | — |
+| `Cursor` | `theme?: string`、`size?: number`、`hideAfterInactiveMs?: number` | なし | — |
+| `Input` | `tapToClick?: boolean`（既定 true）、`naturalScroll?: boolean`（既定 false）、`accelSpeed?: number`（-1〜1、既定 0）、`disableWhileTyping?: boolean`（既定 true）、`focusFollowsMouse?: boolean`（既定 false） | なし | — |
+| `Startup` | `command: string` | なし | —（複数可） |
+| `Environment` | なし | `Env` | 一意 |
+| `Env` | `name: string`、`value: string` | なし | —（`Environment` の中だけ） |
 | `Keybind` | `keys: string`、`action: string`、`command?: string`、`workspace?: number`、`width?: number`、`delta?: number` | なし | — |
 
 - `Layout.mode` はスクロール列レイアウト（core-spec 12 節）を選ぶ。起動時に決まり、リロードでは変わらない（変えるには再起動）。
@@ -28,6 +31,16 @@ CDL 側の仕様は CDL リポジトリの `docs/SPEC.md`（6・8・9 章）と 
     `borderColor` が無いとフォーカス外の枠は描かない。
   - 長さの範囲は 0〜512 の整数 px（`shadowOffsetX/Y` は -512〜512）。外れると CT003。`Cursor.size` は 8〜256 の整数。
   - `Cursor` は環境変数 `XCURSOR_THEME` / `XCURSOR_SIZE` より優先する。リロードで更新する。
+- `Startup` は niri の `spawn-at-startup`。コンポジタが Wayland のソケットを公開したあと、書かれた順に、起動時に一度だけ spawn する。
+  リロードでは再実行しない。`command` は空白で区切った先頭がプログラム、残りが引数（引用符・シェル記法は使えない。要るなら `sh -c …`）。
+  空（空白だけ）の `command` は CT003。起動に失敗しても残りを続け、ログに出す。
+- `Environment` は niri の `environment`。`Env` の `name` と `value` の組を、spawn する子（`Startup` と、`Keybind` の `spawn`）の環境変数に足す。
+  コンポジタ自身の環境は変えない。`WAYLAND_DISPLAY` は常にコンポジタのソケットで上書きする。`name` は空でなく、`=` と NUL を含まない。
+  同じ `name` の重複・不正な `name`/`value` は CT003。リロードで更新する（以後の spawn から効く）。
+- `Cursor.hideAfterInactiveMs` は niri の `cursor.hide-after-inactive-ms`。入力（キー・ポインタ）がこの時間（1〜3,600,000 の整数ミリ秒）ないと、
+  カーソルを隠し、入力があると出す。省略すると隠さない。範囲外・非整数は CT003。nested（winit）ではホストの窓のカーソルを隠す。
+- `Input.focusFollowsMouse` は niri の `focus-follows-mouse`。true のとき、ポインタが窓に入る（窓の上で動く）とその窓にフォーカスを移す。
+  ポインタをつかんでいる間（ドラッグ中）と、レイヤー面がキーボードを持っている間は移さない。
 - `Input` はタッチパッドの設定。libinput のデバイスが追加されたとき（起動時の既存デバイスを含む）とリロードのときに、タッチパッドに適用する。
   デバイスが対応しない項目はログに出して無視する。`accelSpeed` が -1〜1 の外（または非数）なら CT003。
 - `Appearance`、`Workspaces`、`Input` を省略したときは `Settings::builtin()` の値を使う。
@@ -79,13 +92,15 @@ CDL 側の仕様は CDL リポジトリの `docs/SPEC.md`（6・8・9 章）と 
 
 ```ts
 interface WindowInfo { appId: string; title?: string; isDialog: boolean; workspace: number }
-interface Placement  { workspace?: number; floating: boolean; focus?: boolean }
+interface Placement  { workspace?: number; floating: boolean; focus?: boolean; fullscreen?: boolean }
 interface Policy     { windowOpen?: (w: WindowInfo) => Placement }
 ```
 
 - `windowOpen(w)` は新しい窓が最初に map されるときに 1 回呼ばれる。
 - `appId`: 無いときは `""`。`title`: 無いときは省略。`workspace`: フォーカス中のワークスペース（1 始まり）。
 - 戻り値 `workspace` を省略したときはフォーカス中のワークスペース。`focus` を省略したときは `true`。
+- `fullscreen`（niri の `open-fullscreen`）を省略したときは `false`。`true` なら、配置のあとに全画面にする（コンポジタが core の `ToggleFullscreen` を送る）。
+  `ToggleFullscreen` はフォーカス窓に効くので、窓がフォーカスを得たときだけ全画面になる（`focus: false` や、表示中でないワークスペースへの配置では、全画面にしない。ログに出す）。
 - フックを定義しないときは既定の配置（ダイアログは Floating、他は Tiled。フォーカスする）。
 
 ## 3. 失敗時の既定
@@ -105,7 +120,7 @@ interface Policy     { windowOpen?: (w: WindowInfo) => Placement }
 | --- | --- |
 | CT001 | エントリの設定ファイルの状態を調べられない・パスを正準化できない（読めない・UTF-8 でない・サイズ超過は CDL の `E2001` で出る） |
 | CT002 | 値木が期待と食い違う（未知の要素・ルートが違う。スキーマとの不一致で、通常は起きない） |
-| CT003 | prop の値が不正（`modKey` が alt/super でない、`borderWidth` が負または非整数、など） |
+| CT003 | prop の値が不正（`modKey` が alt/super でない、`borderWidth` が負または非整数、`Startup` の `command` が空、`Env` の名前が不正・重複、`hideAfterInactiveMs` が範囲外、など） |
 | CT010 | `Workspaces.count` が 1〜32 の整数でない |
 | CT020 | 未知の action |
 | CT021 | `command` が要る action に `command` がない（または空） |

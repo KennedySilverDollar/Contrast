@@ -91,6 +91,7 @@ mod tests {
                 workspace: Some(7),
                 state: WindowState::Tiled,
                 focus: false,
+                fullscreen: false,
             }
         }
         fn resolve_key(&self, _mods: crate::Mods, _keysym: &str) -> Option<crate::Action> {

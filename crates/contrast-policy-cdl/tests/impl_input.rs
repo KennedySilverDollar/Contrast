@@ -41,6 +41,7 @@ fn all_values_are_read() -> Result<(), String> {
             natural_scroll: true,
             accel_speed: 0.5,
             disable_while_typing: false,
+            focus_follows_mouse: false,
         }
     );
     Ok(())

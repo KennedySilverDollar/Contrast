@@ -242,3 +242,54 @@ fn niri_example_carries_the_niri_look() -> Result<(), String> {
     assert!(s.input.tap_to_click && s.input.natural_scroll);
     Ok(())
 }
+
+#[test]
+fn niri_example_has_the_startup_commands_and_environment() -> Result<(), String> {
+    let settings = load_with(&CdlLoader::new(), &example("niri.cdl"))?;
+    // niri の config.kdl の spawn-at-startup（5 つ、この順）。
+    assert_eq!(
+        settings.startup,
+        [
+            "fcitx5",
+            "ironbar -c /home/user/.config/ironbar/niri-v8.toml -t /home/user/.config/ironbar/niri-v9.css",
+            "swaybg -i /home/user/Pictures/wallpaper/cece.jpg",
+            "mako",
+            "udiskie",
+        ]
+    );
+    // environment（4 つ）。
+    let env: Vec<(&str, &str)> = settings
+        .environment
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
+    assert_eq!(
+        env,
+        [
+            ("GTK_IM_MODULE", "fcitx5"),
+            ("MOZ_ENABLE_WAYLAND", "1"),
+            ("QT_IM_MODULE", "fcitx5"),
+            ("SDL_IM_MODULE", "fcitx5"),
+        ]
+    );
+    // niri の config は focus-follows-mouse も cursor の hide も使わない。
+    assert!(!settings.input.focus_follows_mouse);
+    assert_eq!(settings.cursor.hide_after_inactive_ms, None);
+    Ok(())
+}
+
+#[test]
+fn niri_example_binds_focus_column_first_and_last() -> Result<(), String> {
+    let loader = CdlLoader::new().with_default_mod_key(ModKey::Super);
+    let settings = load_with(&loader, &example("niri.cdl"))?;
+    let mods = super_mods();
+    assert_eq!(
+        settings.resolve_key(mods, "Home"),
+        Some(Action::FocusColumnFirst)
+    );
+    assert_eq!(
+        settings.resolve_key(mods, "End"),
+        Some(Action::FocusColumnLast)
+    );
+    Ok(())
+}

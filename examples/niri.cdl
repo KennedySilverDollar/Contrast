@@ -9,7 +9,9 @@
 // Mod+Alt+… の 3 つは Mod が Alt のとき Mod+… と同じキーになってしまうので、`super+alt+…` と書く（niri の Mod=Super と同じ）。
 // スクロール列レイアウト（Layout mode="scrolling"）: 列が横に並び、Up/Down/J/K は列の中の上下の窓を動く。
 "use cdl 1";
-import { Contrast, Appearance, Layout, Cursor, Input, Workspaces, Keybind } from "host:contrast";
+import {
+  Contrast, Appearance, Layout, Cursor, Input, Workspaces, Startup, Environment, Env, Keybind,
+} from "host:contrast";
 
 export default (
   <Contrast>
@@ -27,6 +29,23 @@ export default (
     <Input tapToClick={true} naturalScroll={true} />
     {/* niri の Mod+1〜9 に合わせて 9 つ */}
     <Workspaces count={9} />
+
+    {/* niri の spawn-at-startup（5 つ）。コンポジタが Wayland のソケットを公開したあとに、この順で一度だけ起動する
+        （リロードでは再実行しない）。コマンドは空白で区切る（引用符は使えない）。失敗してもほかを続ける。 */}
+    <Startup command="fcitx5" />
+    <Startup command="ironbar -c /home/user/.config/ironbar/niri-v8.toml -t /home/user/.config/ironbar/niri-v9.css" />
+    <Startup command="swaybg -i /home/user/Pictures/wallpaper/cece.jpg" />
+    <Startup command="mako" />
+    <Startup command="udiskie" />
+
+    {/* niri の environment（4 つ）。spawn する子（Startup と Keybind の spawn）の環境変数に足す。
+        コンポジタ自身の環境は変えない。WAYLAND_DISPLAY は常にコンポジタのソケットになる。 */}
+    <Environment>
+      <Env name="QT_IM_MODULE" value="fcitx5" />
+      <Env name="GTK_IM_MODULE" value="fcitx5" />
+      <Env name="SDL_IM_MODULE" value="fcitx5" />
+      <Env name="MOZ_ENABLE_WAYLAND" value="1" />
+    </Environment>
 
     {/* プログラムの起動（niri の spawn / spawn-sh のコマンドそのまま） */}
     <Keybind keys="mod+t" action="spawn" command="alacritty" />
@@ -123,7 +142,10 @@ export default (
           Mod+Shift+Page_Down / Page_Up / U / I move-workspace-down / up
         N5 待ち:
           Mod+ホイール系、Print 系（screenshot）、Mod+Shift+Slash（hotkey overlay）、Mod+Shift+P（power-off-monitors）、overview
-        N2（コア不要）待ち:
-          spawn-at-startup（fcitx5・ironbar・swaybg・mako・udiskie）、environment、アニメーション */}
+        N2 の残り:
+          アニメーション（矩形の補間）
+        niri の config では使っていないので書かない（CDL では使える）:
+          Input focusFollowsMouse（focus-follows-mouse）、Cursor hideAfterInactiveMs（cursor.hide-after-inactive-ms）、
+          windowOpen フックの Placement.fullscreen（open-fullscreen） */}
   </Contrast>
 );

@@ -22,6 +22,7 @@ pub fn default_placement(meta: &WindowMeta) -> WindowPlacement {
         workspace: None,
         state,
         focus: true,
+        fullscreen: false,
     }
 }
 
@@ -56,6 +57,14 @@ impl Policy for StaticPolicy {
 
     fn input_settings(&self) -> crate::InputSettings {
         self.store.input_settings()
+    }
+
+    fn startup_commands(&self) -> Vec<String> {
+        self.store.startup_commands()
+    }
+
+    fn environment(&self) -> Vec<(String, String)> {
+        self.store.environment()
     }
 
     fn background(&self) -> [f32; 4] {

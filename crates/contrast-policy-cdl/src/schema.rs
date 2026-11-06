@@ -20,6 +20,7 @@ pub(crate) fn contrast_schema() -> Result<Schema, Vec<String>> {
         ("workspace", Field::optional(Ty::Number)),
         ("floating", Field::required(Ty::Boolean)),
         ("focus", Field::optional(Ty::Boolean)),
+        ("fullscreen", Field::optional(Ty::Boolean)),
     ]);
     Schema::builder()
         .root(MODULE, "Contrast")
@@ -33,8 +34,11 @@ pub(crate) fn contrast_schema() -> Result<Schema, Vec<String>> {
                     "Layout",
                     "Cursor",
                     "Input",
+                    "Startup",
+                    "Environment",
                     "Keybind",
                 ])
+                .unique_child("Environment")
                 .unique_child("Appearance")
                 .unique_child("Workspaces")
                 .unique_child("Layout")
@@ -68,7 +72,19 @@ pub(crate) fn contrast_schema() -> Result<Schema, Vec<String>> {
             MODULE,
             ComponentDef::new("Cursor")
                 .optional_prop("theme", Ty::String)
-                .optional_prop("size", Ty::Number),
+                .optional_prop("size", Ty::Number)
+                .optional_prop("hideAfterInactiveMs", Ty::Number),
+        )
+        .component(
+            MODULE,
+            ComponentDef::new("Startup").prop("command", Ty::String),
+        )
+        .component(MODULE, ComponentDef::new("Environment").children(&["Env"]))
+        .component(
+            MODULE,
+            ComponentDef::new("Env")
+                .prop("name", Ty::String)
+                .prop("value", Ty::String),
         )
         .component(
             MODULE,
@@ -80,7 +96,8 @@ pub(crate) fn contrast_schema() -> Result<Schema, Vec<String>> {
                 .optional_prop("tapToClick", Ty::Boolean)
                 .optional_prop("naturalScroll", Ty::Boolean)
                 .optional_prop("accelSpeed", Ty::Number)
-                .optional_prop("disableWhileTyping", Ty::Boolean),
+                .optional_prop("disableWhileTyping", Ty::Boolean)
+                .optional_prop("focusFollowsMouse", Ty::Boolean),
         )
         .component(
             MODULE,

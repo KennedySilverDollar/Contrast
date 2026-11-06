@@ -8,7 +8,9 @@ use std::collections::BTreeMap;
 
 use cdl_host::{Node, Px, Rgba};
 use contrast_core::{LayoutMode, Ratio};
-use contrast_policy::settings::{MAX_BORDER_WIDTH, MAX_DECORATION_PX, MAX_WORKSPACES, rgba8};
+use contrast_policy::settings::{
+    MAX_BORDER_WIDTH, MAX_DECORATION_PX, MAX_HIDE_AFTER_INACTIVE_MS, MAX_WORKSPACES, rgba8,
+};
 use contrast_policy::{Action, ConfigDiagnostic, KeyBinding, KeySpec, ModKey, Settings, codes};
 
 use crate::diag::{at, convert};
@@ -108,6 +110,8 @@ pub(crate) fn to_settings(
             "Layout" => read_layout(&mut cx, child, &mut settings),
             "Cursor" => read_cursor(&mut cx, child, &mut settings),
             "Input" => read_input(&mut cx, child, &mut settings),
+            "Startup" => read_startup(&mut cx, child, &mut settings),
+            "Environment" => read_environment(&mut cx, child, &mut settings),
             "Keybind" => keybind_nodes.push(child),
             other => cx.error(
                 child,
@@ -339,6 +343,68 @@ fn read_cursor(cx: &mut Ctx<'_>, node: Node<'_>, settings: &mut Settings) {
             ),
         }
     }
+    if let Some(ms) = cx.optional::<f64>(node, "hideAfterInactiveMs") {
+        match integer_in(ms, 1, MAX_HIDE_AFTER_INACTIVE_MS) {
+            Some(n) => settings.cursor.hide_after_inactive_ms = Some(n),
+            None => cx.error(
+                node,
+                codes::BAD_PROP,
+                format!(
+                    "`hideAfterInactiveMs` は 1〜{MAX_HIDE_AFTER_INACTIVE_MS} の整数（{ms} は使えない）"
+                ),
+            ),
+        }
+    }
+}
+
+/// `Startup` を読む。`command` は空でない文字列（空白で区切った先頭がプログラム、残りが引数）。並びの順に足す。
+fn read_startup(cx: &mut Ctx<'_>, node: Node<'_>, settings: &mut Settings) {
+    let Some(command) = cx.prop::<String>(node, "command") else {
+        return;
+    };
+    let command = command.trim().to_owned();
+    if command.is_empty() {
+        cx.error(node, codes::BAD_PROP, "`Startup` の `command` が空");
+        return;
+    }
+    settings.startup.push(command);
+}
+
+/// `Environment` を読む。子は `Env`（`name` と `value`）。名前の重複・空の名前・`=` や NUL を含む名前は CT003。
+fn read_environment(cx: &mut Ctx<'_>, node: Node<'_>, settings: &mut Settings) {
+    for env in node.children() {
+        if env.name() != "Env" {
+            cx.error(
+                env,
+                codes::TREE_MISMATCH,
+                format!(
+                    "`<Environment>` の子は `<Env>` だけ（`<{}>` は置けない）",
+                    env.name()
+                ),
+            );
+            continue;
+        }
+        let name = cx.prop::<String>(env, "name");
+        let value = cx.prop::<String>(env, "value");
+        let (Some(name), Some(value)) = (name, value) else {
+            continue;
+        };
+        if name.is_empty() || name.contains(['=', '\0']) || value.contains('\0') {
+            cx.error(
+                env,
+                codes::BAD_PROP,
+                format!("`Env` の名前は空でなく、`=` と NUL を含まない（\"{name}\"）。値も NUL を含まない"),
+            );
+            continue;
+        }
+        if settings.environment.insert(name.clone(), value).is_some() {
+            cx.error(
+                env,
+                codes::BAD_PROP,
+                format!("`Env` の名前 \"{name}\" が重複している"),
+            );
+        }
+    }
 }
 
 /// `Workspaces` を読む。
@@ -366,6 +432,9 @@ fn read_input(cx: &mut Ctx<'_>, node: Node<'_>, settings: &mut Settings) {
     }
     if let Some(v) = cx.optional::<bool>(node, "disableWhileTyping") {
         settings.input.disable_while_typing = v;
+    }
+    if let Some(v) = cx.optional::<bool>(node, "focusFollowsMouse") {
+        settings.input.focus_follows_mouse = v;
     }
     if let Some(speed) = cx.optional::<f64>(node, "accelSpeed") {
         if speed.is_finite() && (-1.0..=1.0).contains(&speed) {

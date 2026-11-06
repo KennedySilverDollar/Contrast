@@ -103,10 +103,16 @@ pub(crate) fn placement_from_value(v: &Value) -> Result<HookPlacement, ConfigDia
         Some(Value::Bool(b)) => *b,
         Some(_) => return Err(shape("`focus` は boolean が要る")),
     };
+    let fullscreen = match fields.get("fullscreen") {
+        None | Some(Value::Undefined) => false,
+        Some(Value::Bool(b)) => *b,
+        Some(_) => return Err(shape("`fullscreen` は boolean が要る")),
+    };
     Ok(HookPlacement {
         workspace,
         floating,
         focus,
+        fullscreen,
     })
 }
 
@@ -163,7 +169,8 @@ mod tests {
             Ok(HookPlacement {
                 workspace: Some(2),
                 floating: true,
-                focus: true
+                focus: true,
+                fullscreen: false
             })
         );
     }
@@ -175,9 +182,35 @@ mod tests {
             Ok(HookPlacement {
                 workspace: None,
                 floating: false,
-                focus: true
+                focus: true,
+                fullscreen: false
             })
         );
+    }
+
+    #[test]
+    fn fullscreen_is_read_and_defaults_to_false() {
+        let with = |v: Option<Value>| {
+            let mut fields = vec![("floating", Value::Bool(false))];
+            if let Some(v) = v {
+                fields.push(("fullscreen", v));
+            }
+            placement_from_value(&Value::object(fields))
+        };
+        assert_eq!(with(None).map(|p| p.fullscreen), Ok(false));
+        assert_eq!(
+            with(Some(Value::Undefined)).map(|p| p.fullscreen),
+            Ok(false)
+        );
+        assert_eq!(
+            with(Some(Value::Bool(true))).map(|p| p.fullscreen),
+            Ok(true)
+        );
+        assert_eq!(
+            with(Some(Value::Bool(false))).map(|p| p.fullscreen),
+            Ok(false)
+        );
+        assert_eq!(code(with(Some(Value::Number(1.0)))), codes::HOOK_BAD_SHAPE);
     }
 
     #[test]

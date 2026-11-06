@@ -2,6 +2,8 @@
 //!
 //! 組み込みの既定値は `Settings::builtin`。設定ファイルが無い・壊れているときはこれで動く。
 
+use std::collections::BTreeMap;
+
 use crate::port::{Action, Mods};
 
 /// ワークスペース数の上限。
@@ -135,7 +137,12 @@ pub struct CursorSettings {
     pub theme: Option<String>,
     /// カーソルの大きさ（px）。
     pub size: Option<u32>,
+    /// 入力がないまま、この時間（ミリ秒）が過ぎたらカーソルを隠す。`None` なら隠さない。動かすと出る。
+    pub hide_after_inactive_ms: Option<u32>,
 }
+
+/// `hide_after_inactive_ms` の上限（ミリ秒。1 時間）。
+pub const MAX_HIDE_AFTER_INACTIVE_MS: u32 = 3_600_000;
 
 /// 隙間・角丸などの上限（px）。
 pub const MAX_DECORATION_PX: i32 = 512;
@@ -151,6 +158,8 @@ pub struct InputSettings {
     pub accel_speed: f64,
     /// タイピング中はタッチパッドを無効にする。
     pub disable_while_typing: bool,
+    /// ポインタが窓に入ったら、その窓にフォーカスを移す。
+    pub focus_follows_mouse: bool,
 }
 
 impl Default for InputSettings {
@@ -160,6 +169,7 @@ impl Default for InputSettings {
             natural_scroll: false,
             accel_speed: 0.0,
             disable_while_typing: true,
+            focus_follows_mouse: false,
         }
     }
 }
@@ -179,6 +189,10 @@ pub struct Settings {
     pub layout: LayoutSettings,
     /// カーソル。
     pub cursor: CursorSettings,
+    /// 起動時に一度だけ実行するコマンド（並びの順。空白で区切った先頭がプログラム、残りが引数）。リロードでは再実行しない。
+    pub startup: Vec<String>,
+    /// spawn する子プロセスに足す環境変数（名前順）。コンポジタ自身の環境は変えない。
+    pub environment: BTreeMap<String, String>,
     /// キーバインド（並びの順）。
     pub keybinds: Vec<KeyBinding>,
 }
@@ -230,6 +244,8 @@ impl Settings {
             input: InputSettings::default(),
             layout: LayoutSettings::default(),
             cursor: CursorSettings::default(),
+            startup: Vec::new(),
+            environment: BTreeMap::new(),
             keybinds,
         }
     }

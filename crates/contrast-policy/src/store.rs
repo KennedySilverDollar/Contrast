@@ -89,6 +89,7 @@ impl Config {
                 contrast_core::WindowState::Tiled
             },
             focus: p.focus,
+            fullscreen: p.fullscreen,
         })
     }
 }
@@ -238,6 +239,19 @@ impl Policy for ConfigStore {
         self.config().settings.input
     }
 
+    fn startup_commands(&self) -> Vec<String> {
+        self.config().settings.startup.clone()
+    }
+
+    fn environment(&self) -> Vec<(String, String)> {
+        self.config()
+            .settings
+            .environment
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect()
+    }
+
     fn background(&self) -> [f32; 4] {
         self.config().settings.appearance.background
     }
@@ -319,12 +333,44 @@ mod tests {
             workspace: Some(2),
             floating: true,
             focus: false,
+            fullscreen: true,
         })));
         let (p, d) = c.place(&WindowMeta::default(), Some(0));
         assert_eq!(d, None);
         assert_eq!(p.workspace, Some(2));
         assert_eq!(p.state, WindowState::Floating);
         assert!(!p.focus);
+        assert!(p.fullscreen);
+    }
+
+    #[test]
+    fn default_placement_is_not_fullscreen() {
+        assert!(!default_placement(&WindowMeta::default()).fullscreen);
+        let (p, _) = Config::builtin().place(&WindowMeta::default(), None);
+        assert!(!p.fullscreen);
+    }
+
+    #[test]
+    fn startup_and_environment_come_from_the_settings() {
+        let mut s = Settings::builtin();
+        s.startup = vec!["mako".to_owned(), "swaybg -i x.jpg".to_owned()];
+        s.environment.insert("B".to_owned(), "2".to_owned());
+        s.environment.insert("A".to_owned(), "1".to_owned());
+        let store = ConfigStore::new(Config::new(s, None));
+        assert_eq!(store.startup_commands(), ["mako", "swaybg -i x.jpg"]);
+        // 名前順。
+        assert_eq!(
+            store.environment(),
+            [
+                ("A".to_owned(), "1".to_owned()),
+                ("B".to_owned(), "2".to_owned())
+            ]
+        );
+        assert!(
+            ConfigStore::new(Config::builtin())
+                .startup_commands()
+                .is_empty()
+        );
     }
 
     #[test]
@@ -338,6 +384,7 @@ mod tests {
             workspace: Some(4),
             floating: true,
             focus: true,
+            fullscreen: false,
         };
         let (p, d) = with_hook(Ok(Some(out))).place(&WindowMeta::default(), None);
         assert_eq!(p, default);

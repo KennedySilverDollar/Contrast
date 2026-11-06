@@ -26,6 +26,8 @@ pub struct HookPlacement {
     pub floating: bool,
     /// 配置先が表示中ならフォーカスを与えるか。
     pub focus: bool,
+    /// 開いた直後に全画面にするか。
+    pub fullscreen: bool,
 }
 
 /// 新しい窓が開いたときに呼ばれるフック。
