@@ -11,8 +11,9 @@ use smithay::{
         allocator::{Buffer, dmabuf::Dmabuf},
         renderer::utils::on_commit_buffer_handler,
     },
-    delegate_compositor, delegate_data_device, delegate_dmabuf, delegate_output,
-    delegate_primary_selection, delegate_seat, delegate_shm,
+    delegate_compositor, delegate_data_device, delegate_dmabuf, delegate_input_method_manager,
+    delegate_output, delegate_primary_selection, delegate_seat, delegate_shm,
+    delegate_text_input_manager, delegate_virtual_keyboard_manager,
     input::{Seat, SeatHandler, SeatState, pointer::CursorImageStatus},
     reexports::wayland_server::{
         Client, Resource,
@@ -134,6 +135,10 @@ delegate_seat!(Contrast);
 delegate_data_device!(Contrast);
 delegate_primary_selection!(Contrast);
 delegate_output!(Contrast);
+// 日本語入力（fcitx5）: ハンドラは `ime.rs`（`InputMethodHandler`）。
+delegate_text_input_manager!(Contrast);
+delegate_input_method_manager!(Contrast);
+delegate_virtual_keyboard_manager!(Contrast);
 
 impl DmabufHandler for Contrast {
     fn dmabuf_state(&mut self) -> &mut DmabufState {

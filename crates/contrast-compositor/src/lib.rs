@@ -8,6 +8,7 @@ mod backend;
 mod cursor;
 mod geometry;
 mod handler;
+mod ime;
 mod input;
 mod reload;
 mod render;

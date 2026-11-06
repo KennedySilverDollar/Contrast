@@ -19,6 +19,7 @@ use smithay::{
     wayland::{
         compositor::{CompositorClientState, CompositorState},
         dmabuf::{DmabufFeedback, DmabufGlobal, DmabufState},
+        input_method::{InputMethodManagerState, PopupSurface},
         output::OutputManagerState,
         selection::{data_device::DataDeviceState, primary_selection::PrimarySelectionState},
         shell::{
@@ -27,6 +28,8 @@ use smithay::{
         },
         shm::ShmState,
         socket::ListeningSocketSource,
+        text_input::TextInputManagerState,
+        virtual_keyboard::VirtualKeyboardManagerState,
     },
 };
 
@@ -78,6 +81,14 @@ pub struct Contrast {
     pub data_device_state: DataDeviceState,
     pub primary_selection_state: PrimarySelectionState,
     pub layer_shell_state: WlrLayerShellState,
+    /// text-input-v3（アプリが入力メソッドに状態を伝える）。
+    pub text_input_manager_state: TextInputManagerState,
+    /// input-method-v2（fcitx5 などの入力メソッド）。
+    pub input_method_manager_state: InputMethodManagerState,
+    /// virtual-keyboard-v1（入力メソッドがキーを送り返す）。
+    pub virtual_keyboard_manager_state: VirtualKeyboardManagerState,
+    /// 表示中の入力メソッドのポップアップ（候補ウィンドウ）。
+    pub ime_popups: Vec<PopupSurface>,
     /// キーボードフォーカスを持っているレイヤー面（無ければ core のフォーカス窓）。
     pub layer_focus: Option<smithay::reexports::wayland_server::protocol::wl_surface::WlSurface>,
     pub popups: PopupManager,
@@ -126,6 +137,10 @@ impl Contrast {
         let data_device_state = DataDeviceState::new::<Self>(&dh);
         let primary_selection_state = PrimarySelectionState::new::<Self>(&dh);
         let layer_shell_state = WlrLayerShellState::new::<Self>(&dh);
+        let text_input_manager_state = TextInputManagerState::new::<Self>(&dh);
+        let input_method_manager_state = InputMethodManagerState::new::<Self, _>(&dh, |_| true);
+        let virtual_keyboard_manager_state =
+            VirtualKeyboardManagerState::new::<Self, _>(&dh, |_| true);
         let mut seat: Seat<Self> = seat_state.new_wl_seat(&dh, "contrast");
         add_keyboard(&mut seat);
         seat.add_pointer();
@@ -169,6 +184,10 @@ impl Contrast {
             data_device_state,
             primary_selection_state,
             layer_shell_state,
+            text_input_manager_state,
+            input_method_manager_state,
+            virtual_keyboard_manager_state,
+            ime_popups: Vec::new(),
             layer_focus: None,
             popups: PopupManager::default(),
             seat,

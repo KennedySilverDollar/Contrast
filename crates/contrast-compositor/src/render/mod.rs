@@ -103,6 +103,8 @@ pub fn scene_elements(
     };
 
     let mut elements: Vec<SceneElement> = cursor;
+    // 入力メソッドのポップアップ（候補ウィンドウ）は、カーソルの次に前面（枠・窓・レイヤー面より前）。
+    elements.extend(state.ime_popup_elements(renderer, scale));
     match shaders.as_ref().filter(|_| radius > 0) {
         Some(sh) => elements.extend(ring_elements(state, sh, radius)),
         None => elements.extend(border_elements(state).into_iter().map(SceneElement::Solid)),
@@ -188,6 +190,18 @@ pub fn finish_frame(state: &mut Contrast, output: &Output) {
             |_, _| Some(output.clone()),
         )
     });
+
+    // 入力メソッドのポップアップにも frame コールバックを送る（消えたものは外す）。
+    state.ime_popups.retain(|p| p.alive());
+    for popup in &state.ime_popups {
+        smithay::desktop::utils::send_frames_surface_tree(
+            popup.wl_surface(),
+            output,
+            state.start_time.elapsed(),
+            Some(Duration::ZERO),
+            |_, _| Some(output.clone()),
+        );
+    }
 
     state.space.refresh();
     state.popups.cleanup();
