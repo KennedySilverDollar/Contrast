@@ -3,6 +3,7 @@
 //! ホストの Wayland 上に winit の窓を開き、その中でクライアントを受け付ける。
 //! 配置・キーバインド・背景色は `contrast_policy::Policy` に問い合わせる。
 
+mod anim;
 mod backend;
 mod cursor;
 mod geometry;

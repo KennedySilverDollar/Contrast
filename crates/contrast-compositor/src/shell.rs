@@ -107,7 +107,13 @@ impl Contrast {
         if !w.visible || w.state == WindowState::Fullscreen {
             return None;
         }
-        w.rect.map(|tile| self.frame_of(tile, w.state))
+        w.rect
+            .map(|tile| self.displayed_frame(w.id, self.frame_of(tile, w.state)))
+    }
+
+    /// 窓 `id` を今描くフレーム。補間の途中なら途中の矩形、そうでなければ行き先の `target`。
+    fn displayed_frame(&self, id: WindowId, target: Rect) -> Rect {
+        self.anim.displayed(id).unwrap_or(target)
     }
 
     /// フォーカス外の表示中の窓のタイル（全画面は除く）。フォーカス外の枠を描くのに使う。
@@ -117,7 +123,10 @@ impl Contrast {
         view.visible_windows()
             .iter()
             .filter(|w| Some(w.id) != focus && w.state != WindowState::Fullscreen)
-            .filter_map(|w| w.rect.map(|tile| self.frame_of(tile, w.state)))
+            .filter_map(|w| {
+                w.rect
+                    .map(|tile| self.displayed_frame(w.id, self.frame_of(tile, w.state)))
+            })
             .collect()
     }
 
@@ -204,7 +213,10 @@ impl Contrast {
         let Some(key) = self.shell.output_key else {
             return;
         };
+        // 出力の大きさが変わるときは、窓をすぐ新しい矩形に置く（大きさの変更を追いかけて補間しない）。
+        self.anim.suppress(true);
         self.submit(Command::OutputChanged { key, geometry });
+        self.anim.suppress(false);
     }
 
     /// トップレベル窓ができた。
@@ -279,6 +291,9 @@ impl Contrast {
         };
         let id = self.core.view().window_id(key);
         tracing::info!("window removed window={}", fmt_id(id.map(raw)));
+        if let Some(id) = id {
+            self.anim.forget(id);
+        }
         if let Some(window) = self.shell.windows.remove(&key) {
             self.space.unmap_elem(&window);
         }
@@ -323,6 +338,7 @@ impl Contrast {
                 for effect in applied.effects {
                     self.run_effect(effect);
                 }
+                self.anim.end_slide();
                 true
             }
             Err(CoreError::NoFocusedWindow) => {
@@ -362,6 +378,10 @@ impl Contrast {
                     "show workspace={}",
                     fmt_id(shown.map(|i| u64::from(i.get()) + 1))
                 );
+                // 新しく見える窓が、切り替えの向きに合わせて画面の外から入ってくる（`Configure` の補間）。
+                if let (Some(shown), Some(area)) = (shown, self.work_area()) {
+                    self.anim.workspace_shown(shown.get(), area.height());
+                }
                 self.sync_space();
             }
             Effect::Configure {
@@ -385,16 +405,47 @@ impl Contrast {
         }
     }
 
-    /// Configure: 窓の大きさと状態をクライアントに伝え、Space 上の位置を合わせる。
+    /// Configure: 窓の行き先の矩形を受け取る。補間が有効なら、いまの矩形から行き先へ近づける
+    /// （`tick_animations` が毎フレーム進める）。無効なら、すぐ行き先に置く。
     fn configure(&mut self, id: WindowId, tile: Rect, state: WindowState) {
         let Some(window) = self.window_of_id(id) else {
             return;
         };
         let border = self.policy.border_width().max(0);
-        let rect = match state {
+        let frame = match state {
             WindowState::Fullscreen => tile,
-            _ => crate::geometry::window_rect(self.frame_of(tile, state), border),
+            _ => self.frame_of(tile, state),
         };
+        let to_window = |frame: Rect| match state {
+            WindowState::Fullscreen => frame,
+            _ => crate::geometry::window_rect(frame, border),
+        };
+        // 全画面にするときは補間しない（全画面から戻るときは、全画面の矩形から補間する）。
+        let duration = self.animation_duration();
+        let animate = state != WindowState::Fullscreen;
+        let now = std::time::Instant::now();
+        let shown = self.anim.retarget(id, frame, now, duration, animate);
+        self.apply_rect(&window, to_window(shown), state);
+        let rect = to_window(frame);
+        tracing::info!(
+            "layout window={} x={} y={} w={} h={} border={} state={:?}",
+            raw(id),
+            rect.x(),
+            rect.y(),
+            rect.width(),
+            rect.height(),
+            border,
+            state
+        );
+    }
+
+    /// 補間にかける時間（`Layout.animationMs`）。
+    fn animation_duration(&self) -> std::time::Duration {
+        std::time::Duration::from_millis(u64::from(self.policy.layout_settings().animation_ms))
+    }
+
+    /// 窓に大きさと状態を伝え、Space 上の位置を合わせる（ログなし。補間の毎フレームからも呼ぶ）。
+    fn apply_rect(&mut self, window: &Window, rect: Rect, state: WindowState) {
         let toplevel = window.toplevel().expect("wayland toplevel");
         toplevel.with_pending_state(|s| {
             s.size = Some((rect.width(), rect.height()).into());
@@ -421,17 +472,36 @@ impl Contrast {
         if toplevel.is_initial_configure_sent() {
             toplevel.send_pending_configure();
         }
-        self.space.map_element(window, (rect.x(), rect.y()), false);
-        tracing::info!(
-            "layout window={} x={} y={} w={} h={} border={} state={:?}",
-            raw(id),
-            rect.x(),
-            rect.y(),
-            rect.width(),
-            rect.height(),
-            border,
-            state
-        );
+        self.space
+            .map_element(window.clone(), (rect.x(), rect.y()), false);
+    }
+
+    /// 補間を 1 フレーム進める（描画の前に呼ぶ）。まだ続くなら `true`（次のフレームも描く）。
+    pub fn tick_animations(&mut self) -> bool {
+        let duration = self.animation_duration();
+        let border = self.policy.border_width().max(0);
+        for (id, frame) in self.anim.tick(std::time::Instant::now(), duration) {
+            let Some(window) = self.window_of_id(id) else {
+                continue;
+            };
+            let Some(state) = self.core.view().window(id).map(|w| w.state) else {
+                continue;
+            };
+            let rect = match state {
+                WindowState::Fullscreen => frame,
+                _ => crate::geometry::window_rect(frame, border),
+            };
+            tracing::trace!(
+                "anim step window={} x={} y={} w={} h={}",
+                raw(id),
+                rect.x(),
+                rect.y(),
+                rect.width(),
+                rect.height()
+            );
+            self.apply_rect(&window, rect, state);
+        }
+        self.anim.is_running()
     }
 
     /// キーボードフォーカスを core のフォーカス窓に戻す（レイヤー面が消えたあと）。
@@ -473,12 +543,19 @@ impl Contrast {
             let Some(window) = self.shell.windows.get(&key).cloned() else {
                 continue;
             };
+            // 補間の途中の窓は、途中の矩形に置く（行き先ではない）。
             let rect = match w.state {
                 WindowState::Fullscreen => tile,
-                _ => crate::geometry::window_rect(self.frame_of(tile, w.state), border),
+                _ => crate::geometry::window_rect(
+                    self.displayed_frame(w.id, self.frame_of(tile, w.state)),
+                    border,
+                ),
             };
             shown.push((window, rect));
         }
+        let visible_ids: std::collections::BTreeSet<WindowId> =
+            visible.iter().map(|w| w.id).collect();
+        self.anim.retain(&visible_ids);
         let hidden: Vec<Window> = self
             .shell
             .windows

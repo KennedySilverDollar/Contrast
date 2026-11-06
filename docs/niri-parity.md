@@ -18,7 +18,7 @@ niri の設定の既定値は niri の既定（wiki / パッケージの既定�
 | `shadow` | いいえ | △ → **N1 で実装**（`shadowBlur` / `shadowOffsetX/Y` / `shadowColor`） | 影のシェーダ | M |
 | `geometry-corner-radius` | いいえ | △ → **N1 で実装**（`Appearance.radius`） | 窓の角丸シェーダ（カスタムテクスチャシェーダ） | M |
 | 背景 | はい（swaybg） | ○ 背景色 `Appearance.background`。壁紙は swaybg が layer-shell の背景面で動く | — | — |
-| `animations`（既定のまま） | 既定 | △ コンポジタ側で可（矩形の補間）。レイアウトの変更（N3）と同時にやるのが筋 | 窓・ワークスペース・開閉のアニメーション | L |
+| `animations`（既定のまま） | 既定 | ○ **N2 で実装**（`Layout.animationMs`。窓の移動・大きさ・ワークスペース切替の矩形の補間）。窓の開閉の補間は未 | 開閉（出ていく窓・開く窓）の補間 | M |
 | `cursor`（xcursor-theme Cecilia、size 24） | はい | ○ `XCURSOR_THEME` / `XCURSOR_SIZE`。→ N1 で CDL の `Cursor` を足した | CDL > 環境変数 | S |
 | `cursor.hide-after-inactive-ms` | いいえ | ○ **N2 で実装**（`Cursor.hideAfterInactiveMs`） | — | — |
 | `hotkey-overlay` | いいえ | × 該当なし | オーバーレイ描画 | M |
@@ -93,13 +93,13 @@ niri の設定の既定値は niri の既定（wiki / パッケージの既定�
 
 | 区分 | ○ | △ | × |
 |---|---|---|---|
-| 見た目 | 4 | 6（うち gaps・struts・shadow・角丸の 4 つを N1 で実装） | 1 |
+| 見た目 | 5 | 5（うち gaps・struts・shadow・角丸の 4 つを N1 で実装） | 1 |
 | レイアウト（N3a 後） | 11 | 0 | 3 |
 | ワークスペース | 2 | 0 | 6 |
 | 操作 | 5 | 1 | 3 |
 | 入力 | 4 | 0 | 0 |
 | ウィンドウルール | 4 | 0 | 2 |
-| **合計（55 行）** | 30 | 7 | 18 |
+| **合計（55 行）** | 31 | 6 | 18 |
 
 ×の主なもの: 列モデル（列の幅・プリセット・積み・ビューのスクロール）、動的・名前つきワークスペース、複数出力とスケール、
 オーバービュー、スクリーンショット、ホイールのバインド。キー割り当てのうち、代用（△）で済ませているのは
@@ -110,7 +110,7 @@ niri の設定の既定値は niri の既定（wiki / パッケージの既定�
 使っているものを先に、core に触らないものを先にする。
 
 - **N1（今回）**: 見た目。`gap`・`outerGap`、角丸、影、非フォーカスの枠の幅、`Cursor`。`examples/niri.cdl` を niri の config に寄せる。
-- **N2（済み。アニメーションを除く）**: 使っているのに無いもの（core に触らない）。`spawn-at-startup` と `environment`（CDL の `Startup` / `Environment`）、`open-fullscreen`、`focus-follows-mouse`、`cursor.hide-after-inactive`。`focus-column-first/last` の代用は、N3a で core の action（`focus-column-first/last`）が入ったので不要。残りは、矩形の補間によるアニメーション（窓の移動・サイズ・ワークスペース切替）。
+- **N2（済み。窓の開閉の補間を除く）**: 使っているのに無いもの（core に触らない）。`spawn-at-startup` と `environment`（CDL の `Startup` / `Environment`）、`open-fullscreen`、`focus-follows-mouse`、`cursor.hide-after-inactive`。`focus-column-first/last` の代用は、N3a で core の action（`focus-column-first/last`）が入ったので不要。アニメーション（矩形の補間。窓の移動・サイズ・ワークスペース切替）は `Layout.animationMs` で実装した。窓の開閉の補間は未対応。
 - **N3a（済み）**: core のスクロール列レイアウト（列幅・積み・ビュー）とコンポジタの配線。残りは **N3b**: 窓の高さの操作、`center-column`、`consume-or-expel-window-left/right`、ビューのアニメーション。
 - **N3（元の提案）**: core のレイアウト（列モデル）。列の幅（preset・default・set・maximize・center）、列への積み（consume/expel、focus/move-window-up/down、高さ）、ビューの横スクロール。これで `examples/niri.cdl` の「N3 待ち」が解ける。
 - **N4**: ワークスペースとモニタ。動的な縦のワークスペース、`move-workspace-*`、名前つき、複数出力・ホットプラグ・スケール・モード指定、フォーカスとウィンドウのモニタ間移動。

@@ -254,6 +254,7 @@ impl Drm {
         if !self.active {
             return;
         }
+        state.tick_animations();
         let first = self.frames == 0;
         let background = state.policy.background();
         let pointer_pos = state

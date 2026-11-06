@@ -98,6 +98,8 @@ pub struct Contrast {
     pub input_devices: Vec<smithay::reexports::input::Device>,
     /// キー処理の中で見つかった VT 切り替えの要求（キー処理が終わってから実行する）。
     pub pending_vt: Option<i32>,
+    /// 窓の矩形の補間（`Layout.animationMs`）。
+    pub anim: crate::anim::Animator,
     /// 最後に入力（キー・ポインタ）があった時刻。`Cursor.hideAfterInactiveMs` でカーソルを隠すのに使う。
     pub last_input: std::time::Instant,
     /// winit のホストの窓でカーソルを隠している状態（変わったときだけホストに伝える）。
@@ -174,6 +176,7 @@ impl Contrast {
             dmabuf_importer: None,
             vt_switch: None,
             pending_vt: None,
+            anim: crate::anim::Animator::default(),
             last_input: std::time::Instant::now(),
             host_cursor_hidden: false,
             input_devices: Vec::new(),
