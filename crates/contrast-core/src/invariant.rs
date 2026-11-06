@@ -26,7 +26,8 @@ pub enum InvariantViolation {
     I6,
     /// I9: 同じワークスペースに Fullscreen の窓が 2 枚以上ある。
     I9(WorkspaceIndex),
-    /// I10: `Scrolling` で、Tiled の窓がちょうど 1 つの列に属していない、空の列がある、または列の幅が 1 未満。
+    /// I10: `Scrolling` で、Tiled の窓がちょうど 1 つの列に属していない、空の列がある、列の幅が 1 未満、
+    /// または表示中のワークスペースの列で窓の高さの合計が作業領域の高さに等しくない（D55。窓の数が高さ以下のとき）。
     I10(WorkspaceIndex),
     /// I11: `Scrolling` で、フォーカスが Tiled の窓にあるのに、その列が D39 の条件を満たしていない。
     I11(WindowId),
@@ -185,6 +186,7 @@ fn check_i9(state: &State) -> Result<(), InvariantViolation> {
 }
 
 /// I10: `Scrolling` では、各 Tiled の窓がちょうど 1 つの列に属し、空の列がなく、列の幅は 1 以上。
+/// さらに（D55）、表示中のワークスペースの各列で、窓の高さの合計は作業領域の高さに等しい。
 fn check_i10(state: &State) -> Result<(), InvariantViolation> {
     if state.layout.mode != LayoutMode::Scrolling {
         return Ok(());
@@ -215,6 +217,33 @@ fn check_i10(state: &State) -> Result<(), InvariantViolation> {
             .count();
         if bad_column || !tiled_ok || in_columns != tiled_total {
             return Err(InvariantViolation::I10(ws.index));
+        }
+    }
+    check_i10_heights(state)
+}
+
+/// I10（D55）: 表示中のワークスペースの各列で、窓の高さの合計が作業領域の高さに等しい。
+/// 窓の数が高さより多い列は検査しない（その配置は `Layout(AreaTooSmall)` で拒否される）。
+fn check_i10_heights(state: &State) -> Result<(), InvariantViolation> {
+    for output in state.outputs.values() {
+        let Ok(area) = output.work_area() else {
+            continue;
+        };
+        let Some(ws) = state.workspace(output.shown) else {
+            continue;
+        };
+        for column in &ws.columns {
+            let fits = usize::try_from(area.height()).is_ok_and(|h| column.windows.len() <= h);
+            if !fits {
+                continue;
+            }
+            let sum = column.windows.iter().try_fold(0_i32, |sum, id| {
+                let rect = state.windows.get(id)?.rect?;
+                sum.checked_add(rect.height())
+            });
+            if sum != Some(area.height()) {
+                return Err(InvariantViolation::I10(ws.index));
+            }
         }
     }
     Ok(())
@@ -487,6 +516,53 @@ mod tests {
             check(&state),
             Err(InvariantViolation::I5(WindowId::from_raw(2)))
         );
+        Ok(())
+    }
+
+    /// I10（D55）: 列の窓の高さの合計が作業領域の高さに足りない。
+    #[test]
+    fn detects_i10_when_a_column_does_not_fill_the_height() -> Result<(), &'static str> {
+        let mut state = scrolling_valid().ok_or("setup")?;
+        let id = WindowId::from_raw(1);
+        state.windows.get_mut(&id).ok_or("window")?.rect = Rect::new(0, 0, 100, 50);
+        assert_eq!(
+            check(&state),
+            Err(InvariantViolation::I10(WorkspaceIndex::new(0)))
+        );
+        Ok(())
+    }
+
+    /// I10（D55）: 列に窓が複数あるとき、高さの合計が作業領域の高さに等しければ通り、等しくなければ違反。
+    #[test]
+    fn checks_the_sum_of_heights_in_a_stacked_column() -> Result<(), &'static str> {
+        let mut state = scrolling_valid().ok_or("setup")?;
+        add_window(&mut state, 2, WindowState::Tiled).ok_or("add 2")?;
+        add_window(&mut state, 3, WindowState::Tiled).ok_or("add 3")?;
+        let index = WorkspaceIndex::new(0);
+        let column = state
+            .workspace_mut(index)
+            .ok_or("ws")?
+            .columns
+            .first_mut()
+            .ok_or("column")?;
+        column.windows.push(WindowId::from_raw(2));
+        column.windows.push(WindowId::from_raw(3));
+        let rects = [(1, 0, 30), (2, 30, 30), (3, 60, 40)];
+        for (raw, y, h) in rects {
+            state
+                .windows
+                .get_mut(&WindowId::from_raw(raw))
+                .ok_or("window")?
+                .rect = Rect::new(0, y, 100, h);
+        }
+        assert_eq!(check(&state), Ok(()));
+        // 合計が 100 に足りない（隙間ができる）。
+        state
+            .windows
+            .get_mut(&WindowId::from_raw(3))
+            .ok_or("window")?
+            .rect = Rect::new(0, 60, 100, 30);
+        assert_eq!(check(&state), Err(InvariantViolation::I10(index)));
         Ok(())
     }
 
