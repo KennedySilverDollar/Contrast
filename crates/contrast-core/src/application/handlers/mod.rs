@@ -87,6 +87,11 @@ fn dispatch_action(state: &mut State, action: Action) -> Result<Vec<Effect>, Cor
         Action::SwitchPresetColumnWidth => switch_preset_width::handle(state),
         Action::MaximizeColumn => maximize_column::handle(state),
         Action::SetColumnWidth(width) => set_column_width::handle(state, width),
+        // D51・D54: 窓の高さと CenterColumn。`Equal` では状態不変で `Ok`。`Scrolling` の実装はこのあとのステップで足す。
+        Action::SetWindowHeight(_)
+        | Action::SwitchPresetWindowHeight
+        | Action::ResetWindowHeight
+        | Action::CenterColumn => Ok(Vec::new()),
     }
 }
 

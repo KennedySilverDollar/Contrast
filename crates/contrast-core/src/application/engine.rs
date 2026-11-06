@@ -29,6 +29,8 @@ pub struct CoreConfig {
     default_column_width: Ratio,
     /// プリセットの列幅（先頭から詰める。残りは `None`）。
     preset_column_widths: [Option<Ratio>; MAX_PRESETS],
+    /// プリセットの窓の高さ（D49。先頭から詰める。残りは `None`）。
+    preset_window_heights: [Option<Ratio>; MAX_PRESETS],
 }
 
 impl CoreConfig {
@@ -40,6 +42,7 @@ impl CoreConfig {
             layout: LayoutSettings::DEFAULT.mode,
             default_column_width: LayoutSettings::DEFAULT.default_width,
             preset_column_widths: LayoutSettings::DEFAULT.presets,
+            preset_window_heights: LayoutSettings::DEFAULT.window_presets,
         }
     }
 
@@ -71,12 +74,27 @@ impl CoreConfig {
         self
     }
 
+    /// プリセットの窓の高さを指定する（D49）。空なら既定のまま。`MAX_PRESETS`（8）を超える分は使わない。
+    #[must_use]
+    pub fn with_preset_window_heights(mut self, presets: Vec<Ratio>) -> Self {
+        if presets.is_empty() {
+            return self;
+        }
+        let mut slots = [None; MAX_PRESETS];
+        for (slot, ratio) in slots.iter_mut().zip(presets) {
+            *slot = Some(ratio);
+        }
+        self.preset_window_heights = slots;
+        self
+    }
+
     /// `State` が持つ設定にする。
     fn layout_settings(&self) -> LayoutSettings {
         LayoutSettings {
             mode: self.layout,
             default_width: self.default_column_width,
             presets: self.preset_column_widths,
+            window_presets: self.preset_window_heights,
         }
     }
 }
@@ -158,6 +176,34 @@ mod tests {
     use crate::invariant::InvariantViolation;
     use crate::layout::Columns;
     use crate::policy::DefaultPolicy;
+
+    #[test]
+    fn preset_window_heights_are_configurable_and_an_empty_list_keeps_the_default() {
+        let default = CoreConfig::new(2);
+        assert_eq!(default.with_preset_window_heights(Vec::new()), default);
+        let Some(quarter) = Ratio::new(1, 4) else {
+            return;
+        };
+        let custom = default.with_preset_window_heights(alloc::vec![quarter]);
+        assert_eq!(
+            custom.layout_settings().window_presets.first(),
+            Some(&Some(quarter))
+        );
+        assert_eq!(
+            custom
+                .layout_settings()
+                .window_presets
+                .iter()
+                .flatten()
+                .count(),
+            1
+        );
+        // 列幅のプリセットには影響しない。
+        assert_eq!(
+            custom.layout_settings().presets,
+            default.layout_settings().presets
+        );
+    }
 
     #[test]
     fn check_invariants_reports_a_broken_state() {

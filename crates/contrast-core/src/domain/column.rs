@@ -90,6 +90,38 @@ impl ColumnWidth {
     }
 }
 
+/// 列の中の窓の高さ（core-spec 14 節、D49）。
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum WindowHeight {
+    /// 自動（要求のない窓で、残りを等分する。D50）。
+    #[default]
+    Auto,
+    /// 作業領域の高さの割合（切り捨て、1 以上）。
+    Proportion(Ratio),
+    /// 固定の高さ（px、1 以上）。
+    Fixed(i32),
+}
+
+impl WindowHeight {
+    /// 固定の高さ。`px` が 1 未満なら `None`。
+    #[must_use]
+    pub const fn fixed(px: i32) -> Option<Self> {
+        if px >= 1 { Some(Self::Fixed(px)) } else { None }
+    }
+
+    /// 作業領域の高さ `area_height` のときの要求の px（D50）。`Auto` は要求がないので `None`。
+    /// `Proportion` は切り捨て、どちらも 1 以上。
+    #[must_use]
+    pub fn requested_px(self, area_height: i32) -> Option<i32> {
+        match self {
+            Self::Auto => None,
+            Self::Fixed(px) => Some(px.max(1)),
+            Self::Proportion(r) => Some(ColumnWidth::Proportion(r).px(area_height)),
+        }
+    }
+}
+
 /// 窓の並べ方。
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -113,6 +145,8 @@ pub struct LayoutSettings {
     pub default_width: Ratio,
     /// プリセットの列幅（先頭から詰める。残りは `None`）。
     pub presets: [Option<Ratio>; MAX_PRESETS],
+    /// プリセットの窓の高さ（D49。既定 1/3・1/2・2/3。先頭から詰める。残りは `None`）。
+    pub window_presets: [Option<Ratio>; MAX_PRESETS],
 }
 
 impl LayoutSettings {
@@ -133,6 +167,7 @@ impl LayoutSettings {
         mode: LayoutMode::Equal,
         default_width: Ratio::HALF,
         presets: Self::DEFAULT_PRESETS,
+        window_presets: Self::DEFAULT_PRESETS,
     };
 
     /// 設定されているプリセットを順に返す。
@@ -178,5 +213,50 @@ impl Column {
         self.last_focused
             .filter(|id| self.windows.contains(id))
             .or_else(|| self.windows.first().copied())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ratio(n: u32, d: u32) -> Ratio {
+        Ratio::new(n, d).unwrap_or(Ratio::HALF)
+    }
+
+    #[test]
+    fn fixed_heights_need_one_pixel() {
+        assert_eq!(WindowHeight::fixed(1), Some(WindowHeight::Fixed(1)));
+        assert_eq!(WindowHeight::fixed(0), None);
+        assert_eq!(WindowHeight::fixed(-3), None);
+    }
+
+    #[test]
+    fn requested_px_follows_d50() {
+        assert_eq!(WindowHeight::Auto.requested_px(600), None);
+        assert_eq!(WindowHeight::Fixed(580).requested_px(600), Some(580));
+        // 不正な Fixed も 1 以上に直す。
+        assert_eq!(WindowHeight::Fixed(0).requested_px(600), Some(1));
+        // 割合は切り捨て、1 以上。
+        assert_eq!(
+            WindowHeight::Proportion(ratio(1, 3)).requested_px(600),
+            Some(200)
+        );
+        assert_eq!(
+            WindowHeight::Proportion(ratio(1, 3)).requested_px(10),
+            Some(3)
+        );
+        assert_eq!(
+            WindowHeight::Proportion(ratio(1, 1000)).requested_px(10),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn the_default_height_is_auto_and_the_default_presets_are_thirds_and_a_half() {
+        assert_eq!(WindowHeight::default(), WindowHeight::Auto);
+        let settings = LayoutSettings::default();
+        assert_eq!(settings.window_presets, settings.presets);
+        assert_eq!(settings.window_presets.iter().flatten().count(), 3);
     }
 }

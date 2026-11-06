@@ -1,6 +1,6 @@
 //! core への入力: `Command`、`Action`、`Direction`。
 
-use crate::domain::column::ColumnWidth;
+use crate::domain::column::{ColumnWidth, WindowHeight};
 use crate::domain::geometry::Rect;
 use crate::domain::id::{ExternalKey, WorkspaceIndex};
 use crate::domain::insets::Insets;
@@ -96,6 +96,14 @@ pub enum Action {
     MaximizeColumn,
     /// フォーカス列の幅を指定する（`Scrolling` のみ、D44）。
     SetColumnWidth(ColumnWidth),
+    /// フォーカス窓の高さを指定する。`Auto` は `ResetWindowHeight` と同じ（`Scrolling` のみ、D51）。
+    SetWindowHeight(WindowHeight),
+    /// フォーカス窓の高さを、現在の px の高さより高い最初のプリセットへ変える。なければ先頭へ（`Scrolling` のみ、D51）。
+    SwitchPresetWindowHeight,
+    /// フォーカス窓の高さを `Auto` に戻す（`Scrolling` のみ、D51）。
+    ResetWindowHeight,
+    /// フォーカス列の中心を作業領域の中心に合わせる（`Scrolling` のみ、D51・D53）。
+    CenterColumn,
 }
 
 /// 方向。
