@@ -146,7 +146,7 @@ pub fn shown_area_width(state: &State, index: WorkspaceIndex) -> Option<i32> {
     output.work_area().ok().map(|a| a.width())
 }
 
-/// 列の状態を、窓の状態に合わせる（D36・D40・D46、I10）。`Scrolling` のとき、各 handler のあと・`arrange` の前に呼ぶ。
+/// 列の状態を、窓の状態に合わせる（D36・D40・D46・D52、I10）。`Scrolling` のとき、各 handler のあと・`arrange` の前に呼ぶ。
 ///
 /// - Tiled でなくなった窓・消えた窓を列から除き、空の列を除く。
 /// - どの列にもない Tiled の窓は、最後にフォーカスされた列の右隣に、新しい列（既定の幅）として入れる。
@@ -193,6 +193,10 @@ pub fn sync_workspace(
         if col.last_focused.is_some_and(|l| !col.windows.contains(&l)) {
             col.last_focused = None;
         }
+        // D52: 列にいない窓の高さは捨てる。窓が別の列へ移る（Consume・Expel・別のワークスペースへ・
+        // Floating や Fullscreen を経て戻る）と、その窓の高さは `Auto` に戻る。同じ列の中の入れ替えでは残る。
+        let windows = &col.windows;
+        col.heights.retain(|id, _| windows.contains(id));
     }
     ws.columns.retain(|col| !col.windows.is_empty());
     for id in tiled {
@@ -574,6 +578,65 @@ mod tests {
         assert_eq!(ws.columns.len(), 1);
         assert_eq!(ws.column_of(wid(2)), Some((0, 0)));
         assert_eq!(ws.column_of(wid(1)), None);
+    }
+
+    #[test]
+    fn a_window_that_leaves_its_column_loses_its_height() {
+        let mut ws = workspace();
+        sync_workspace(&mut ws, &[wid(1), wid(2), wid(3)], None, half());
+        // 列 [1, 2] と列 [3]。1 と 3 に高さを持たせる。
+        if let Some(c) = ws.columns.get_mut(1) {
+            c.windows.clear();
+        }
+        if let Some(c) = ws.columns.first_mut() {
+            c.windows.push(wid(2));
+            c.heights.insert(wid(1), prop(1, 3));
+        }
+        ws.columns.retain(|c| !c.windows.is_empty());
+        if let Some(c) = ws.columns.last_mut() {
+            c.heights.insert(wid(3), WindowHeight::Fixed(50));
+        }
+        sync_workspace(&mut ws, &[wid(1), wid(2), wid(3)], None, half());
+        // 同じ列にいる窓の高さは残る。
+        assert_eq!(
+            ws.columns.first().map(|c| c.height_of(wid(1))),
+            Some(prop(1, 3))
+        );
+        assert_eq!(
+            ws.columns.last().map(|c| c.height_of(wid(3))),
+            Some(WindowHeight::Fixed(50))
+        );
+        // 1 が別の列（3 の列）へ移ると、1 の高さは Auto に戻る。3 の高さは残る。
+        if let Some(c) = ws.columns.first_mut() {
+            c.windows.retain(|w| *w != wid(1));
+        }
+        if let Some(c) = ws.columns.last_mut() {
+            c.windows.push(wid(1));
+        }
+        sync_workspace(&mut ws, &[wid(1), wid(2), wid(3)], None, half());
+        let last = ws.columns.last();
+        assert_eq!(last.map(|c| c.height_of(wid(1))), Some(WindowHeight::Auto));
+        assert_eq!(
+            last.map(|c| c.height_of(wid(3))),
+            Some(WindowHeight::Fixed(50))
+        );
+        assert!(
+            ws.columns
+                .iter()
+                .all(|c| c.heights.keys().all(|id| c.windows.contains(id)))
+        );
+    }
+
+    #[test]
+    fn heights_of_removed_windows_are_dropped() {
+        let mut ws = workspace();
+        sync_workspace(&mut ws, &[wid(1)], None, half());
+        if let Some(c) = ws.columns.first_mut() {
+            c.windows.push(wid(2));
+            c.heights.insert(wid(2), prop(1, 2));
+        }
+        sync_workspace(&mut ws, &[wid(1)], None, half());
+        assert_eq!(ws.columns.first().map(|c| c.heights.len()), Some(0));
     }
 
     #[test]
