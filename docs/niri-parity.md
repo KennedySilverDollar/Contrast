@@ -20,7 +20,7 @@ niri の設定の既定値は niri の既定（wiki / パッケージの既定�
 | 背景 | はい（swaybg） | ○ 背景色 `Appearance.background`。壁紙は swaybg が layer-shell の背景面で動く | — | — |
 | `animations`（既定のまま） | 既定 | △ コンポジタ側で可（矩形の補間）。レイアウトの変更（N3）と同時にやるのが筋 | 窓・ワークスペース・開閉のアニメーション | L |
 | `cursor`（xcursor-theme Cecilia、size 24） | はい | ○ `XCURSOR_THEME` / `XCURSOR_SIZE`。→ N1 で CDL の `Cursor` を足した | CDL > 環境変数 | S |
-| `cursor.hide-after-inactive-ms` | いいえ | △ | 入力が無い間カーソルを隠す | S |
+| `cursor.hide-after-inactive-ms` | いいえ | ○ **N2 で実装**（`Cursor.hideAfterInactiveMs`） | — | — |
 | `hotkey-overlay` | いいえ | × 該当なし | オーバーレイ描画 | M |
 
 ## レイアウト
@@ -60,8 +60,8 @@ niri の設定の既定値は niri の既定（wiki / パッケージの既定�
 | niri の機能 | 使用 | Contrast の今 | 必要な変更 | 規模 |
 |---|---|---|---|---|
 | `spawn` / `spawn-sh` | はい | ○（`spawn`。`spawn-sh` はシェル記法を使っていなければ同じ） | シェル記法が要る場合は `sh -c` | S |
-| `spawn-at-startup`（fcitx5・ironbar・swaybg・mako・udiskie） | **はい（5 つ）** | △ 起動時に実行する仕組みが無い | CDL に `Startup`（コマンドの並び）、コンポジタが起動後に spawn | S |
-| `environment`（QT_IM_MODULE など 4 つ） | **はい** | △ spawn する子に環境変数を渡せない | CDL に `Environment`、spawn に反映 | S |
+| `spawn-at-startup`（fcitx5・ironbar・swaybg・mako・udiskie） | **はい（5 つ）** | ○ **N2 で実装**（`Startup`。ソケット公開後に一度だけ、順に spawn） | — | — |
+| `environment`（QT_IM_MODULE など 4 つ） | **はい** | ○ **N2 で実装**（`Environment` / `Env`。spawn する子の環境に足す） | — | — |
 | `close-window`・`quit` | はい | ○ | — | — |
 | 音量などの `XF86Audio*`（`allow-when-locked`） | はい | ○（`spawn`。ロック画面は無い） | — | — |
 | `Mod+ホイール`系 | はい | × ポインタ軸のバインドが無い | 軸イベントのバインド | M |
@@ -76,7 +76,7 @@ niri の設定の既定値は niri の既定（wiki / パッケージの既定�
 | `input.touchpad`（tap・natural-scroll） | はい | ○（`Input`。実機で確認待ち） | — | — |
 | `input.keyboard.xkb` | 空 | ○（`CONTRAST_XKB_*`） | CDL にも足すなら S | S |
 | `input.mouse` | 空 | ○ 既定のまま | — | — |
-| `focus-follows-mouse` | いいえ | △ | ポインタ移動でフォーカス | S |
+| `focus-follows-mouse` | いいえ | ○ **N2 で実装**（`Input.focusFollowsMouse`） | — | — |
 
 ## ウィンドウルール
 
@@ -85,7 +85,7 @@ niri の設定の既定値は niri の既定（wiki / パッケージの既定�
 | `window-rule { match app-id … }` | はい（wezterm の `default-column-width {}` は実質何もしない。keepassxc のルールは無効化） | ○ `windowOpen` フック（app-id・title で判定） | — | — |
 | `open-on-workspace` | いいえ | ○（フックの `workspace`） | — | — |
 | `open-floating` | いいえ | ○（フックの `floating`） | — | — |
-| `open-fullscreen` | いいえ | △ フックの戻り値に状態を足す | `Placement` に `fullscreen`（contrast-policy 側） | S |
+| `open-fullscreen` | いいえ | ○ **N2 で実装**（フックの `Placement.fullscreen`。配置後に `ToggleFullscreen`） | — | — |
 | `default-column-width`（ルール） | はい（空） | × 列の幅が無い | N3 | L |
 | `block-out-from "screen-capture"` | 無効 | × | screencopy が先 | L |
 
@@ -93,13 +93,13 @@ niri の設定の既定値は niri の既定（wiki / パッケージの既定�
 
 | 区分 | ○ | △ | × |
 |---|---|---|---|
-| 見た目 | 3 | 7（うち gaps・struts・shadow・角丸の 4 つを N1 で実装） | 1 |
+| 見た目 | 4 | 6（うち gaps・struts・shadow・角丸の 4 つを N1 で実装） | 1 |
 | レイアウト（N3a 後） | 11 | 0 | 3 |
 | ワークスペース | 2 | 0 | 6 |
-| 操作 | 3 | 3 | 3 |
-| 入力 | 3 | 1 | 0 |
-| ウィンドウルール | 3 | 1 | 2 |
-| **合計（55 行）** | 25 | 12 | 18 |
+| 操作 | 5 | 1 | 3 |
+| 入力 | 4 | 0 | 0 |
+| ウィンドウルール | 4 | 0 | 2 |
+| **合計（55 行）** | 30 | 7 | 18 |
 
 ×の主なもの: 列モデル（列の幅・プリセット・積み・ビューのスクロール）、動的・名前つきワークスペース、複数出力とスケール、
 オーバービュー、スクリーンショット、ホイールのバインド。キー割り当てのうち、代用（△）で済ませているのは
@@ -110,7 +110,7 @@ niri の設定の既定値は niri の既定（wiki / パッケージの既定�
 使っているものを先に、core に触らないものを先にする。
 
 - **N1（今回）**: 見た目。`gap`・`outerGap`、角丸、影、非フォーカスの枠の幅、`Cursor`。`examples/niri.cdl` を niri の config に寄せる。
-- **N2**: 使っているのに無いもの（core に触らない）。`spawn-at-startup` と `environment`（CDL の `Startup` / `Environment`）、`open-fullscreen`、`focus-follows-mouse`、`cursor.hide-after-inactive`、`focus-column-first/last` の代用。続けて、矩形の補間によるアニメーション（窓の移動・サイズ・ワークスペース切替）。
+- **N2（済み。アニメーションを除く）**: 使っているのに無いもの（core に触らない）。`spawn-at-startup` と `environment`（CDL の `Startup` / `Environment`）、`open-fullscreen`、`focus-follows-mouse`、`cursor.hide-after-inactive`。`focus-column-first/last` の代用は、N3a で core の action（`focus-column-first/last`）が入ったので不要。残りは、矩形の補間によるアニメーション（窓の移動・サイズ・ワークスペース切替）。
 - **N3a（済み）**: core のスクロール列レイアウト（列幅・積み・ビュー）とコンポジタの配線。残りは **N3b**: 窓の高さの操作、`center-column`、`consume-or-expel-window-left/right`、ビューのアニメーション。
 - **N3（元の提案）**: core のレイアウト（列モデル）。列の幅（preset・default・set・maximize・center）、列への積み（consume/expel、focus/move-window-up/down、高さ）、ビューの横スクロール。これで `examples/niri.cdl` の「N3 待ち」が解ける。
 - **N4**: ワークスペースとモニタ。動的な縦のワークスペース、`move-workspace-*`、名前つき、複数出力・ホットプラグ・スケール・モード指定、フォーカスとウィンドウのモニタ間移動。

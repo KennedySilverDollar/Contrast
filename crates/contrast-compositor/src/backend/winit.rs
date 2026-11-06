@@ -122,6 +122,12 @@ fn render_winit(
     output: &Output,
     damage_tracker: &mut OutputDamageTracker,
 ) -> Result<(), RenderError> {
+    // ホストがカーソルを描くので、隠すときはホストの窓に頼む（変わったときだけ）。
+    let hidden = state.cursor_hidden();
+    if hidden != state.host_cursor_hidden {
+        backend.window().set_cursor_visible(!hidden);
+        state.host_cursor_hidden = hidden;
+    }
     let damage = Rectangle::from_size(backend.window_size());
     {
         let (renderer, mut framebuffer) = backend

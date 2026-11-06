@@ -11,6 +11,7 @@ mod input;
 mod reload;
 mod render;
 mod shell;
+mod spawn;
 mod state;
 
 use std::path::PathBuf;
@@ -87,6 +88,9 @@ pub fn run(store: Rc<ConfigStore>, source: ConfigSource) -> Result<(), Box<dyn s
         "listening: WAYLAND_DISPLAY={}",
         state.socket_name.to_string_lossy()
     );
+
+    // Wayland のソケットを公開したので、`Startup` のコマンドを起動する（起動時に一度だけ。リロードでは再実行しない）。
+    state.run_startup();
 
     let result = event_loop.run(None, &mut state, |_| {});
     tracing::info!("event loop stopped, exiting");

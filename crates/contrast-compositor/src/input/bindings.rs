@@ -85,7 +85,7 @@ impl Contrast {
     }
 
     /// 表示中のワークスペースの番号（0 始まり）。出力が無ければ `None`。
-    fn shown_workspace_index(&self) -> Option<u8> {
+    pub(crate) fn shown_workspace_index(&self) -> Option<u8> {
         let view = self.core.view();
         let output = view.output_id(self.shell.output_key?)?;
         view.shown_workspace(output).map(|i| i.get())
@@ -112,24 +112,9 @@ impl Contrast {
         });
     }
 
-    /// `command`（空白で区切った先頭がプログラム、残りが引数）をこのコンポジタのソケットにつないで起動する。
+    /// キーバインドの `spawn`。環境変数などは `spawn_command` が決める。
     fn spawn(&self, command: &str) {
-        let mut words = command.split_whitespace();
-        let Some(program) = words.next() else {
-            return;
-        };
-        match std::process::Command::new(program)
-            .args(words)
-            .env("WAYLAND_DISPLAY", &self.socket_name)
-            .spawn()
-        {
-            Ok(mut child) => {
-                tracing::info!(command, pid = child.id(), "spawned");
-                // ゾンビを残さないよう、別スレッドで終了を待つ。
-                std::thread::spawn(move || child.wait());
-            }
-            Err(err) => tracing::warn!(command, %err, "spawn failed"),
-        }
+        self.spawn_command(command, "keybind");
     }
 }
 

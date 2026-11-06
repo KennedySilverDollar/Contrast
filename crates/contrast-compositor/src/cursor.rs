@@ -28,6 +28,22 @@ use smithay::{
 use contrast_policy::CursorSettings;
 
 use crate::render::SceneElement;
+use crate::state::Contrast;
+
+/// 入力が `limit_ms` ミリ秒以上なかったら、カーソルを隠すか（`Cursor.hideAfterInactiveMs`）。`None` なら隠さない。
+pub fn is_hidden(idle: std::time::Duration, limit_ms: Option<u32>) -> bool {
+    limit_ms.is_some_and(|ms| idle >= std::time::Duration::from_millis(u64::from(ms)))
+}
+
+impl Contrast {
+    /// 今、カーソルを隠すべきか。動かす・キーを押すと（`last_input` が新しくなり）また出る。
+    pub fn cursor_hidden(&self) -> bool {
+        is_hidden(
+            self.last_input.elapsed(),
+            self.policy.cursor_settings().hide_after_inactive_ms,
+        )
+    }
+}
 
 /// カーソルの既定の大きさ（`XCURSOR_SIZE` が無いとき）。
 const DEFAULT_SIZE: u32 = 24;
@@ -283,6 +299,7 @@ mod tests {
         let set = CursorSettings {
             theme: Some("Cdl".to_owned()),
             size: Some(48),
+            ..CursorSettings::default()
         };
         assert_eq!(
             resolve_theme(&set, Some("Env"), Some("32")),
@@ -292,6 +309,17 @@ mod tests {
         assert_eq!(resolve_theme(&none, None, Some("4")).1, 24);
         assert_eq!(resolve_theme(&none, None, Some("big")).1, 24);
         assert_eq!(resolve_theme(&none, Some(""), None).0, "default");
+    }
+
+    #[test]
+    fn hides_only_after_the_idle_time() {
+        use std::time::Duration;
+        let ms = Duration::from_millis;
+        assert!(!is_hidden(ms(5000), None));
+        assert!(!is_hidden(ms(999), Some(1000)));
+        assert!(is_hidden(ms(1000), Some(1000)));
+        assert!(is_hidden(ms(60_000), Some(1000)));
+        assert!(!is_hidden(Duration::ZERO, Some(1)));
     }
 
     #[test]

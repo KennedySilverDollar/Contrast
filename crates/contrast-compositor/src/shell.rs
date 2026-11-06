@@ -21,7 +21,7 @@ use smithay::{
 
 use contrast_core::{
     Columns, Command, Core, CoreError, Effect, EntityId, ExternalKey, IdKind, OutputName, Point,
-    Rect, WindowId, WindowMeta, WindowState,
+    Rect, StateView, WindowId, WindowMeta, WindowState,
 };
 
 use contrast_policy::{Policy, PortPlacement};
@@ -233,13 +233,30 @@ impl Contrast {
         self.window_mapped(window, meta);
     }
 
-    /// 窓を core に登録する。
+    /// 窓を core に登録する。ポリシーが「開いた直後に全画面」を求めていれば、配置のあとに全画面にする。
     fn window_mapped(&mut self, window: Window, meta: WindowMeta) {
         let key = self.shell.issue_key();
         self.shell.windows.insert(key, window);
+        // core の配置（`PortPlacement`）と同じ問い合わせ。フックは純粋なので、答えは同じになる。
+        let want_fullscreen = self
+            .policy
+            .place_window(&meta, self.shown_workspace_index())
+            .fullscreen;
         if !self.submit(Command::WindowMapped { key, meta }) {
             // core に登録できなかった窓は管理しない（docs/questions.md Q9）。
             self.shell.windows.remove(&key);
+            return;
+        }
+        if want_fullscreen {
+            match fullscreen_command(&self.core.view(), key) {
+                Some(command) => {
+                    tracing::info!("open-fullscreen: window requested fullscreen");
+                    self.submit(command);
+                }
+                None => tracing::warn!(
+                    "open-fullscreen ignored: the window did not get the focus (focus=false or hidden workspace)"
+                ),
+            }
         }
     }
 
@@ -276,6 +293,22 @@ impl Contrast {
         let id = self.core.view().window_id(key);
         tracing::info!("click focus window={} x={} y={}", fmt_id(id.map(raw)), x, y);
         self.submit(Command::WindowFocusRequested(key));
+    }
+
+    /// ポインタが座標の下の窓に入った。その窓がフォーカスされていなければ、フォーカスを要求する
+    /// （`Input.focusFollowsMouse`）。窓の外（空き領域）では何もしない。
+    pub fn hover_focus(&mut self, x: f64, y: f64) {
+        let Some(key) = self.visible_key_at(x.floor() as i32, y.floor() as i32) else {
+            return;
+        };
+        let need = {
+            let view = self.core.view();
+            needs_focus(view.focus(), view.window_id(key))
+        };
+        if need {
+            tracing::info!("focus follows mouse x={} y={}", x, y);
+            self.submit(Command::WindowFocusRequested(key));
+        }
     }
 
     /// core の Action を適用する。
@@ -462,6 +495,17 @@ impl Contrast {
     }
 }
 
+/// ポインタの下の窓 `hovered` にフォーカスを移すべきか（窓があり、今のフォーカスと違うとき）。
+fn needs_focus(current: Option<WindowId>, hovered: Option<WindowId>) -> bool {
+    hovered.is_some() && hovered != current
+}
+
+/// 登録した直後の窓 `key` を全画面にする `Command`。窓がフォーカスを得たときだけ（`ToggleFullscreen` はフォーカス窓に効く）。
+fn fullscreen_command(view: &StateView<'_>, key: ExternalKey) -> Option<Command> {
+    let id = view.window_id(key)?;
+    (view.focus() == Some(id)).then_some(Command::Action(contrast_core::Action::ToggleFullscreen))
+}
+
 /// 重なり順（小さいほど下）: Tiled → Floating → Fullscreen。
 fn stacking(state: WindowState) -> u8 {
     match state {
@@ -488,4 +532,129 @@ fn read_meta(window: &Window) -> WindowMeta {
     meta.title = title;
     meta.is_dialog = toplevel.parent().is_some();
     meta
+}
+
+#[cfg(test)]
+mod tests {
+    use std::rc::Rc;
+
+    use contrast_core::{CoreConfig, OutputName};
+    use contrast_policy::{
+        Config, ConfigDiagnostic, ConfigStore, HookPlacement, PlacementHook, Settings, WindowInfo,
+    };
+
+    use super::*;
+
+    /// 毎回同じ配置を返すフック。
+    struct Hook {
+        focus: bool,
+        fullscreen: bool,
+    }
+
+    impl PlacementHook for Hook {
+        fn window_open(&self, _w: &WindowInfo) -> Result<Option<HookPlacement>, ConfigDiagnostic> {
+            Ok(Some(HookPlacement {
+                workspace: None,
+                floating: false,
+                focus: self.focus,
+                fullscreen: self.fullscreen,
+            }))
+        }
+    }
+
+    /// 出力 1 つの core。窓の配置は `hook` に従う。
+    fn core_with(hook: Hook) -> Result<(ContrastCore, Rc<dyn Policy>), String> {
+        let store = Rc::new(ConfigStore::new(Config::new(
+            Settings::builtin(),
+            Some(Box::new(hook)),
+        )));
+        let policy: Rc<dyn Policy> = store;
+        let mut core = ContrastCore::new(
+            CoreConfig::new(policy.workspace_count()),
+            PortPlacement::new(Rc::clone(&policy)),
+            Columns::new(),
+        );
+        let geometry = Rect::new(0, 0, 800, 600).ok_or("rect")?;
+        core.apply(Command::OutputAdded {
+            key: ExternalKey::new(1),
+            name: OutputName::new("test"),
+            geometry,
+        })
+        .map_err(|e| format!("{e:?}"))?;
+        Ok((core, policy))
+    }
+
+    /// 窓 `n` を登録する。
+    fn map(core: &mut ContrastCore, n: u64) -> Result<ExternalKey, String> {
+        let key = ExternalKey::new(n);
+        core.apply(Command::WindowMapped {
+            key,
+            meta: WindowMeta::default(),
+        })
+        .map_err(|e| format!("{e:?}"))?;
+        Ok(key)
+    }
+
+    #[test]
+    fn open_fullscreen_makes_the_focused_new_window_fullscreen() -> Result<(), String> {
+        let (mut core, policy) = core_with(Hook {
+            focus: true,
+            fullscreen: true,
+        })?;
+        assert!(
+            policy
+                .place_window(&WindowMeta::default(), Some(0))
+                .fullscreen
+        );
+        let key = map(&mut core, 2)?;
+        let command = fullscreen_command(&core.view(), key).ok_or("focused: expected a command")?;
+        core.apply(command).map_err(|e| format!("{e:?}"))?;
+        let view = core.view();
+        let id = view.window_id(key).ok_or("id")?;
+        assert_eq!(
+            view.window(id).map(|w| w.state),
+            Some(WindowState::Fullscreen)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn open_fullscreen_is_skipped_when_the_window_is_not_focused() -> Result<(), String> {
+        let (mut core, _) = core_with(Hook {
+            focus: true,
+            fullscreen: false,
+        })?;
+        let first = map(&mut core, 2)?;
+        // 2 枚目は focus=false の配置にしたいので、別の core を作る代わりに、フォーカスが first のままなことを使う。
+        let (mut core2, _) = core_with(Hook {
+            focus: false,
+            fullscreen: true,
+        })?;
+        let a = map(&mut core2, 2)?;
+        // focus=false の窓はフォーカスを得ない。
+        assert!(fullscreen_command(&core2.view(), a).is_none());
+        // 知らない key には何もしない。
+        assert!(fullscreen_command(&core.view(), ExternalKey::new(99)).is_none());
+        assert!(fullscreen_command(&core.view(), first).is_some());
+        Ok(())
+    }
+
+    #[test]
+    fn focus_moves_only_to_a_different_window() -> Result<(), String> {
+        let (mut core, _) = core_with(Hook {
+            focus: true,
+            fullscreen: false,
+        })?;
+        let a = map(&mut core, 2)?;
+        let b = map(&mut core, 3)?;
+        let view = core.view();
+        let (ida, idb) = (view.window_id(a), view.window_id(b));
+        // 新しい窓 b がフォーカスを持っている。
+        assert_eq!(view.focus(), idb);
+        assert!(needs_focus(view.focus(), ida));
+        assert!(!needs_focus(view.focus(), idb));
+        assert!(!needs_focus(view.focus(), None));
+        assert!(needs_focus(None, ida));
+        Ok(())
+    }
 }

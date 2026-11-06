@@ -69,8 +69,21 @@ impl Contrast {
         self.focus_at(pos.x, pos.y);
     }
 
+    /// ポインタが動いたとき、`Input.focusFollowsMouse` が有効なら、下の窓にフォーカスを移す。
+    /// レイヤー面がキーボードを持っている間と、ポインタをつかんでいる間（ドラッグなど）は動かさない。
+    fn follow_focus(&mut self, pos: Point<f64, Logical>) {
+        if !self.policy.input_settings().focus_follows_mouse || self.layer_focus.is_some() {
+            return;
+        }
+        if self.seat.get_pointer().is_none_or(|p| p.is_grabbed()) {
+            return;
+        }
+        self.hover_focus(pos.x, pos.y);
+    }
+
     /// winit からの入力イベントを 1 つ処理する。
     pub fn process_input_event<I: InputBackend>(&mut self, event: InputEvent<I>) {
+        self.last_input = std::time::Instant::now();
         match event {
             InputEvent::Keyboard { event, .. } => {
                 self.on_key(event.key_code(), event.state(), Event::time_msec(&event))
@@ -92,6 +105,7 @@ impl Contrast {
                     },
                 );
                 pointer.frame(self);
+                self.follow_focus(pos);
             }
             InputEvent::PointerMotion { event, .. } => {
                 let Some(output) = self.space.outputs().next().cloned() else {
@@ -118,6 +132,7 @@ impl Contrast {
                     },
                 );
                 pointer.frame(self);
+                self.follow_focus(pos);
             }
             InputEvent::PointerButton { event, .. } => {
                 let pointer = self.seat.get_pointer().expect("seat has pointer");

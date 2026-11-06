@@ -274,13 +274,17 @@ impl Drm {
         let (Some(output), Some(renderer)) = (gpu.output.as_mut(), gpu.renderer.as_mut()) else {
             return;
         };
-        let cursor = cursor_elements(
-            renderer,
-            &mut self.theme,
-            &mut self.fallback_cursor,
-            &cursor_status,
-            pointer_pos,
-        );
+        let cursor = if state.cursor_hidden() {
+            Vec::new()
+        } else {
+            cursor_elements(
+                renderer,
+                &mut self.theme,
+                &mut self.fallback_cursor,
+                &cursor_status,
+                pointer_pos,
+            )
+        };
         let elements = match scene_elements(state, renderer, &output_name, cursor) {
             Ok(e) => e,
             Err(e) => {
