@@ -24,6 +24,8 @@
           pkgs.cargo-mutants
           pkgs.cargo-semver-checks
           pkgs.cargo-deny
+          # リンクを速く、メモリを少なくする
+          pkgs.mold
           # nested プロトタイプ（contrast / contrast-compositor）のビルドと実行用
           pkgs.pkg-config
           pkgs.wayland
@@ -47,6 +49,10 @@
           pkgs.systemdLibs
           pkgs.libgbm
         ];
+        # 既存の RUSTFLAGS があれば、末尾に足す
+        shellHook = ''
+          export RUSTFLAGS="''${RUSTFLAGS:+$RUSTFLAGS }-C link-arg=-fuse-ld=mold"
+        '';
       };
     };
 }

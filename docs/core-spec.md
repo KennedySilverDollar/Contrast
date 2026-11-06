@@ -277,3 +277,10 @@ layer-shell のバーなどが確保する領域を、出力の作業領域か�
 - **D46 Floating・Fullscreen**: `Scrolling` でも、Floating（D8・D20）と Fullscreen（D9）は、列に属さない。Tiled に戻るときは、フォーカス列の右隣の新しい列として入る。
 - **D47 不変条件**: I5 は `Scrolling` では「同じワークスペースの Tiled の窓の矩形は重ならず、縦は作業領域の範囲に収まる（横はビューの外に出てよい）」に改める。I10: `Scrolling` の各 Tiled の窓は、ちょうど 1 つの列に属し、空の列はなく、列の幅は 1 以上。I11: フォーカスが Tiled の窓にあるとき、その列は D39 の条件を満たす。
 - **D48 N3a に含めないもの**: 窓の高さの操作（preset・reset・set）、`center-column`、ビューのアニメーション、`Scrolling` での `OutputChanged` による列幅の再計算の細部（`Proportion` の列は、新しい作業領域の幅で再計算する）。
+
+## 13. 検証方針
+
+- **守る主張は厳格 crate に限る**: `contrast-core` と `contrast-policy`（smithay に依存しない crate）が、パニックしない・決定的・`unsafe` なし、を守る。`smithay` に依存する crate（`contrast-compositor`・`contrast`）と、CDL との接続（`contrast-policy-cdl`）は、FFI や Smithay との境界を含むので、厳格 lint の対象外とする。
+- **手段**: lint（`unsafe_code` の forbid、clippy の deny、`disallowed-types` / `disallowed-methods`）、設計（`HashMap` / `HashSet` を使わない、時刻・環境に触れない）、proptest（既存の `tests/spec`）。Kani と cargo-fuzz は使わない。
+- **実行**: 日常は、変更した厳格 crate だけを `-p` で `clippy` と `test` にかける。区切り（マージの前）で、ワークスペース全体を検査する。
+- **実機 TTY の確認**は、区切りで 1 回にまとめる。確認項目は少なくする。
