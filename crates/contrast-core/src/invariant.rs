@@ -528,6 +528,7 @@ mod tests {
             width: ColumnWidth::Proportion(Ratio::FULL),
             last_focused: None,
             restore_width: None,
+            heights: alloc::collections::BTreeMap::new(),
         });
         assert_eq!(check(&state), Err(InvariantViolation::I10(index)));
         Ok(())

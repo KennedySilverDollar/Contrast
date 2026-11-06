@@ -5,6 +5,7 @@
 //! - `ColumnWidth::fixed` は 1 以上だけを受ける。`Fixed` を直接作られても、幅の計算（`px`）は 1 以上に直す（I10）。
 //! - `Column` は `Scrolling` のワークスペースだけが持つ。空の列を作らないのは `Workspace` の操作と `sync` の責任（I10）。
 
+use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
 
 use crate::domain::id::WindowId;
@@ -193,6 +194,8 @@ pub struct Column {
     pub last_focused: Option<WindowId>,
     /// 最大化する前の幅（最大化中だけ `Some`、D44）。
     pub restore_width: Option<ColumnWidth>,
+    /// 窓ごとの高さ（D49）。ない窓は `Auto`。列にない窓の分は持たない（D52。`sync` が捨てる）。
+    pub heights: BTreeMap<WindowId, WindowHeight>,
 }
 
 impl Column {
@@ -204,7 +207,20 @@ impl Column {
             width,
             last_focused: Some(id),
             restore_width: None,
+            heights: BTreeMap::new(),
         }
+    }
+
+    /// 窓 `id` の高さ。持っていなければ `Auto`。
+    #[must_use]
+    pub fn height_of(&self, id: WindowId) -> WindowHeight {
+        self.heights.get(&id).copied().unwrap_or_default()
+    }
+
+    /// 窓を上から順に並べた高さの要求（D50 の入力）。
+    #[must_use]
+    pub fn height_requests(&self) -> Vec<WindowHeight> {
+        self.windows.iter().map(|id| self.height_of(*id)).collect()
     }
 
     /// この列へフォーカスを移すときの窓: 最後にフォーカスした窓、なければ先頭の窓。

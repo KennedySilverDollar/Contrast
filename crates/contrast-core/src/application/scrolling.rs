@@ -1,10 +1,10 @@
 //! スクロール列レイアウト（core-spec 12 節）の計算と、列の状態の整合。
 //!
-//! 純粋な関数（`split_heights`・`column_lefts`・`adjust_view`・`clamp_view`）と、`State` / `Workspace` を読み書きする
+//! 純粋な関数（`split_heights`・`distribute_heights`・`column_lefts`・`adjust_view`・`clamp_view`）と、`State` / `Workspace` を読み書きする
 //! 関数（`sync`・`arrange_workspace`・`focus_pos`・`focus_after_removal`）を置く。
 //!
 //! 守る不変条件:
-//! - I5（Scrolling 版）`arrange_workspace` は列を x = 0 から隙間なく並べ、窓の高さを等分する。縦は作業領域に収まり、重ならない。
+//! - I5（Scrolling 版）`arrange_workspace` は列を x = 0 から隙間なく並べ、窓の高さを D50 の規則で配る。縦は作業領域に収まり、重ならない。
 //! - I10 `sync` は、Tiled の窓をちょうど 1 つの列に入れ、空の列を作らない。
 //! - I11 `arrange_workspace` は、フォーカス列が見えるようにビューを調整する（D39）。
 //!
@@ -12,7 +12,7 @@
 
 use alloc::vec::Vec;
 
-use crate::domain::column::{Column, ColumnWidth};
+use crate::domain::column::{Column, ColumnWidth, WindowHeight};
 use crate::domain::geometry::Rect;
 use crate::domain::id::{WindowId, WorkspaceIndex};
 use crate::domain::state::State;
@@ -35,6 +35,60 @@ pub fn split_heights(total: i32, n: usize) -> Option<Vec<i32>> {
         });
     }
     Some(heights)
+}
+
+/// D50: 高さ `total` を、上から並んだ窓の要求 `requests` に配る。
+///
+/// - `Auto` が 1 つもなければ、一番下の窓を `Auto` とみなす（その窓自身の要求は使わない）。
+/// - `Auto` でない窓は、上から順に、要求の高さ（`Proportion` は `total × r` の切り捨て、1 以上。`Fixed` は px）を取る。
+///   ただし上限は、残りの高さ（これまでに配った `Auto` でない窓の分を引いた高さ）から、
+///   まだ配っていない他の窓の数 × 1 px を引いた値。上限を超える要求は上限に切り詰める。
+/// - `Auto` の窓は、残りを等分する（余りは上から 1 px ずつ）。
+///
+/// どの窓も 1 以上で、合計は `total` になる。窓がなければ、または窓の数が `total` より多ければ `None`。
+/// 足し引きが i32 に収まらなくても `None`。
+///
+/// 上限の数え方は、D50 の「後ろに続く窓の数」を、`Auto` が `Auto` でない窓より上にあるときも
+/// 1 px を残せるように、「まだ配っていない他の窓の数」に広げたもの（上にある `Auto` の窓が 0 になるのを防ぐ）。
+/// `Auto` が `Auto` でない窓より下にしかないときは、D50 の文面と同じ結果になる。
+#[must_use]
+pub fn distribute_heights(total: i32, requests: &[WindowHeight]) -> Option<Vec<i32>> {
+    let count = i32::try_from(requests.len())
+        .ok()
+        .filter(|c| *c >= 1 && *c <= total)?;
+    let has_auto = requests.contains(&WindowHeight::Auto);
+    let last = requests.len().checked_sub(1)?;
+    let mut fixed: Vec<Option<i32>> = Vec::with_capacity(requests.len());
+    let mut fixed_sum: i32 = 0;
+    let mut assigned: i32 = 0;
+    for (i, request) in requests.iter().enumerate() {
+        let auto = *request == WindowHeight::Auto || (!has_auto && i == last);
+        if auto {
+            fixed.push(None);
+            continue;
+        }
+        let want = request.requested_px(total).unwrap_or(1);
+        let unassigned_others = count.checked_sub(assigned)?.checked_sub(1)?;
+        let bound = total
+            .checked_sub(fixed_sum)?
+            .checked_sub(unassigned_others)?;
+        let height = want.clamp(1, bound.max(1));
+        fixed_sum = fixed_sum.checked_add(height)?;
+        assigned = assigned.checked_add(1)?;
+        fixed.push(Some(height));
+    }
+    let autos = usize::try_from(count.checked_sub(assigned)?).ok()?;
+    let mut shares = split_heights(total.checked_sub(fixed_sum)?, autos)?.into_iter();
+    fixed
+        .into_iter()
+        .map(|height| height.or_else(|| shares.next()))
+        .collect()
+}
+
+/// 列 `column` の窓の高さを、上から順に、作業領域の高さ `total` に対して求める（D50）。`distribute_heights` が `None` なら `None`。
+#[must_use]
+pub fn column_heights(column: &Column, total: i32) -> Option<Vec<i32>> {
+    distribute_heights(total, &column.height_requests())
 }
 
 /// 幅の並び（左から右）から、各列の左端（x = 0 から隙間なし）と総幅を求める。足し算が i32 に収まらなければ `None`。
@@ -188,8 +242,7 @@ pub fn arrange_workspace(
 
     let mut placed: Vec<(WindowId, Rect)> = Vec::new();
     for ((col, width), left) in ws.columns.iter().zip(&widths).zip(&lefts) {
-        let heights =
-            split_heights(area.height(), col.windows.len()).ok_or(LayoutError::AreaTooSmall)?;
+        let heights = column_heights(col, area.height()).ok_or(LayoutError::AreaTooSmall)?;
         let x = area
             .x()
             .checked_add(*left)
@@ -298,6 +351,145 @@ mod tests {
         assert_eq!(split_heights(-5, 1), None);
     }
 
+    fn prop(n: u32, d: u32) -> WindowHeight {
+        Ratio::new(n, d).map_or(WindowHeight::Auto, WindowHeight::Proportion)
+    }
+
+    #[test]
+    fn all_auto_windows_share_the_height_evenly() {
+        let auto = WindowHeight::Auto;
+        assert_eq!(distribute_heights(600, &[auto, auto]), Some(vec![300, 300]));
+        assert_eq!(
+            distribute_heights(10, &[auto, auto, auto]),
+            Some(vec![4, 3, 3])
+        );
+        assert_eq!(distribute_heights(600, &[auto]), Some(vec![600]));
+        // Auto だけの列は、これまでの等分（`split_heights`）と同じ。
+        assert_eq!(
+            distribute_heights(601, &[auto, auto, auto]),
+            split_heights(601, 3)
+        );
+    }
+
+    #[test]
+    fn requests_are_taken_and_auto_windows_share_the_rest() {
+        let auto = WindowHeight::Auto;
+        assert_eq!(
+            distribute_heights(600, &[prop(1, 3), auto]),
+            Some(vec![200, 400])
+        );
+        assert_eq!(
+            distribute_heights(600, &[WindowHeight::Fixed(580), auto, auto]),
+            Some(vec![580, 10, 10])
+        );
+        // Auto が間にあっても、残りを等分する。
+        assert_eq!(
+            distribute_heights(600, &[auto, WindowHeight::Fixed(300), auto]),
+            Some(vec![150, 300, 150])
+        );
+    }
+
+    #[test]
+    fn a_request_is_cut_to_leave_one_pixel_for_each_other_window() {
+        let auto = WindowHeight::Auto;
+        assert_eq!(
+            distribute_heights(600, &[WindowHeight::Fixed(599), auto, auto]),
+            Some(vec![598, 1, 1])
+        );
+        assert_eq!(
+            distribute_heights(600, &[WindowHeight::Fixed(10_000), auto]),
+            Some(vec![599, 1])
+        );
+        // 上にある Auto にも 1 px を残す。
+        assert_eq!(
+            distribute_heights(600, &[auto, WindowHeight::Fixed(10_000)]),
+            Some(vec![1, 599])
+        );
+    }
+
+    #[test]
+    fn the_last_window_takes_the_rest_when_none_is_auto() {
+        let two_thirds = prop(2, 3);
+        assert_eq!(
+            distribute_heights(600, &[two_thirds, two_thirds, two_thirds]),
+            Some(vec![400, 199, 1])
+        );
+        // 最後の窓自身の要求は使わない。
+        assert_eq!(
+            distribute_heights(600, &[prop(1, 3), WindowHeight::Fixed(5)]),
+            Some(vec![200, 400])
+        );
+    }
+
+    #[test]
+    fn distribution_needs_a_window_per_pixel() {
+        let auto = WindowHeight::Auto;
+        assert_eq!(
+            distribute_heights(3, &[auto, auto, auto]),
+            Some(vec![1, 1, 1])
+        );
+        assert_eq!(distribute_heights(2, &[auto, auto, auto]), None);
+        assert_eq!(distribute_heights(600, &[]), None);
+        assert_eq!(distribute_heights(0, &[auto]), None);
+        assert_eq!(distribute_heights(-5, &[auto]), None);
+    }
+
+    /// どの要求の並びでも、窓の数が高さ以下なら、高さは 1 以上で合計がちょうど `total` になる（境界値を全部たどる）。
+    #[test]
+    fn every_distribution_fills_the_height_exactly() {
+        let choices = [
+            WindowHeight::Auto,
+            WindowHeight::Fixed(1),
+            WindowHeight::Fixed(7),
+            WindowHeight::Fixed(100),
+            prop(1, 3),
+            prop(1, 1),
+        ];
+        for total in 1..=24 {
+            for n in 1..=4usize {
+                let mut index = vec![0usize; n];
+                loop {
+                    let requests: Vec<WindowHeight> = index
+                        .iter()
+                        .filter_map(|i| choices.get(*i))
+                        .copied()
+                        .collect();
+                    let got = distribute_heights(total, &requests);
+                    if n <= usize::try_from(total).unwrap_or(0) {
+                        let heights = got.unwrap_or_default();
+                        assert_eq!(heights.len(), n, "{total} {requests:?}");
+                        assert!(heights.iter().all(|h| *h >= 1), "{total} {requests:?}");
+                        assert_eq!(heights.iter().sum::<i32>(), total, "{total} {requests:?}");
+                    } else {
+                        assert_eq!(got, None, "{total} {requests:?}");
+                    }
+                    // 次の組み合わせ（n 桁の choices.len() 進数）。
+                    let mut pos = 0;
+                    while let Some(digit) = index.get_mut(pos) {
+                        *digit += 1;
+                        if *digit < choices.len() {
+                            break;
+                        }
+                        *digit = 0;
+                        pos += 1;
+                    }
+                    if pos == n {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn column_heights_use_the_columns_requests() {
+        let mut column = Column::single(wid(1), half());
+        column.windows.push(wid(2));
+        assert_eq!(column_heights(&column, 600), Some(vec![300, 300]));
+        column.heights.insert(wid(1), prop(1, 3));
+        assert_eq!(column_heights(&column, 600), Some(vec![200, 400]));
+    }
+
     #[test]
     fn lefts_run_from_zero_without_gaps() {
         assert_eq!(
@@ -392,6 +584,7 @@ mod tests {
             width: half(),
             last_focused: Some(wid(1)),
             restore_width: None,
+            heights: alloc::collections::BTreeMap::new(),
         }];
         sync_workspace(&mut ws, &[wid(1), wid(2)], Some(wid(2)), half());
         assert_eq!(
