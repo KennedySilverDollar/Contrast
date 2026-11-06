@@ -134,7 +134,8 @@ impl Contrast {
         let layout = policy.layout_settings();
         let mut core_config = contrast_core::CoreConfig::new(policy.workspace_count())
             .with_layout(layout.mode)
-            .with_preset_column_widths(layout.preset_column_widths.clone());
+            .with_preset_column_widths(layout.preset_column_widths.clone())
+            .with_preset_window_heights(layout.window_height_presets.clone());
         if let Some(width) = layout.default_column_width {
             core_config = core_config.with_default_column_width(width);
         }

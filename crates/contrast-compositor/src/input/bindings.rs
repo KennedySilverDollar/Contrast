@@ -39,6 +39,11 @@ impl Contrast {
                 contrast_core::Action::SetColumnWidth(contrast_core::ColumnWidth::Proportion(ratio))
             }
             Action::AdjustColumnWidth(percent) => return self.adjust_column_width(percent),
+            Action::CenterColumn => contrast_core::Action::CenterColumn,
+            Action::SwitchPresetWindowHeight => contrast_core::Action::SwitchPresetWindowHeight,
+            Action::ResetWindowHeight => contrast_core::Action::ResetWindowHeight,
+            Action::SetWindowHeight(height) => contrast_core::Action::SetWindowHeight(height),
+            Action::AdjustWindowHeight(percent) => return self.adjust_window_height(percent),
             Action::ToggleFloating => contrast_core::Action::ToggleFloating,
             Action::ToggleFullscreen => contrast_core::Action::ToggleFullscreen,
             Action::WorkspaceNext => return self.step_workspace(1, false),
@@ -70,6 +75,35 @@ impl Contrast {
         self.core_action(contrast_core::Action::SetColumnWidth(
             contrast_core::ColumnWidth::Proportion(ratio),
         ));
+    }
+
+    /// フォーカス窓の高さを `percent` パーセントぶん増減する（`adjust_column_width` と同じ。今の高さの割合に足して 1〜100 に収める）。
+    fn adjust_window_height(&mut self, percent: i8) {
+        let Some(area) = self.shown_area_height() else {
+            return;
+        };
+        let current = self.focused_window_height();
+        let Some(next) = current.and_then(|h| adjusted_percent(h, area, percent)) else {
+            return;
+        };
+        let Some(ratio) = contrast_core::Ratio::new(next, 100) else {
+            return;
+        };
+        self.core_action(contrast_core::Action::SetWindowHeight(
+            contrast_core::WindowHeight::Proportion(ratio),
+        ));
+    }
+
+    /// 表示中のワークスペースの出力の作業領域の高さ。
+    fn shown_area_height(&self) -> Option<i32> {
+        let output = self.space.outputs().next()?;
+        Some(self.space.output_geometry(output)?.size.h)
+    }
+
+    /// フォーカス窓の矩形の高さ。
+    fn focused_window_height(&self) -> Option<i32> {
+        let view = self.core.view();
+        view.window(view.focus()?)?.rect.map(|r| r.height())
     }
 
     /// 表示中のワークスペースの出力の作業領域の幅（core が窓を並べる領域の幅）。
@@ -171,5 +205,14 @@ mod width_tests {
         assert_eq!(adjusted_percent(900, 900, 10), Some(100));
         assert_eq!(adjusted_percent(90, 900, -50), Some(1));
         assert_eq!(adjusted_percent(1200, 900, -10), Some(100));
+    }
+
+    #[test]
+    fn heights_use_the_same_rounding_against_the_area_height() {
+        // 高さ 300 / 作業領域 600 = 50%。±10% で 60% / 40%。
+        assert_eq!(adjusted_percent(300, 600, 10), Some(60));
+        assert_eq!(adjusted_percent(300, 600, -10), Some(40));
+        assert_eq!(adjusted_percent(600, 600, 10), Some(100));
+        assert_eq!(adjusted_percent(6, 600, -50), Some(1));
     }
 }
