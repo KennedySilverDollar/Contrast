@@ -7,10 +7,10 @@
 use std::collections::BTreeMap;
 
 use cdl_host::{Node, Px, Rgba};
-use contrast_core::{LayoutMode, Ratio};
+use contrast_core::{LayoutMode, Ratio, WindowHeight};
 use contrast_policy::settings::{
     MAX_ANIMATION_MS, MAX_BORDER_WIDTH, MAX_DECORATION_PX, MAX_HIDE_AFTER_INACTIVE_MS,
-    MAX_WORKSPACES, rgba8,
+    MAX_WINDOW_HEIGHT_PX, MAX_WORKSPACES, rgba8,
 };
 use contrast_policy::{Action, ConfigDiagnostic, KeyBinding, KeySpec, ModKey, Settings, codes};
 
@@ -314,6 +314,18 @@ fn read_layout(cx: &mut Ctx<'_>, node: Node<'_>, settings: &mut Settings) {
             ),
         }
     }
+    if let Some(text) = cx.optional::<String>(node, "windowHeightPresets") {
+        match parse_presets(&text) {
+            Some(list) => settings.layout.window_height_presets = list,
+            None => cx.error(
+                node,
+                codes::BAD_PROP,
+                format!(
+                    "`windowHeightPresets` は 0 より大きく 1 以下の数を、空白かコンマで区切って 1〜{MAX_PRESET_COLUMNS} 個（\"{text}\" は使えない）"
+                ),
+            ),
+        }
+    }
 }
 
 /// プリセットの列幅の最大数（core の `MAX_PRESETS` と同じ）。
@@ -327,6 +339,14 @@ fn proportion(x: f64) -> Option<Ratio> {
     let num = (x * 1000.0).round().clamp(1.0, 1000.0);
     // `num` は 1.0〜1000.0 の整数値なので、切り捨てても変わらない。
     Ratio::new(num as u32, 1000)
+}
+
+/// パーセントの増減 `delta`（0 以外で -100〜100 の整数）。範囲外・非整数・なしは `None`。
+fn percent_delta(delta: Option<f64>) -> Option<i8> {
+    let d = delta?;
+    let n = integer_in(d.abs(), 1, 100)?;
+    let v = i8::try_from(n).ok()?;
+    if d < 0.0 { v.checked_neg() } else { Some(v) }
 }
 
 /// 空白かコンマで区切った割合の並び。1〜`MAX_PRESET_COLUMNS` 個で、どれも `proportion` が通るときだけ。
@@ -468,6 +488,8 @@ fn read_keybind(cx: &mut Ctx<'_>, node: Node<'_>, settings: &Settings) -> Option
     let workspace = cx.optional::<f64>(node, "workspace");
     let width = cx.optional::<f64>(node, "width");
     let delta = cx.optional::<f64>(node, "delta");
+    let height = cx.optional::<f64>(node, "height");
+    let height_px = cx.optional::<f64>(node, "heightPx");
     let (keys, action) = (keys?, action?);
 
     let spec: Option<KeySpec> = match parse_key_spec(&keys, settings.mod_key) {
@@ -482,6 +504,8 @@ fn read_keybind(cx: &mut Ctx<'_>, node: Node<'_>, settings: &Settings) -> Option
         workspace,
         width,
         delta,
+        height,
+        height_px,
         count: settings.workspaces,
     };
     let action = read_action(cx, node, &action, args);
@@ -499,8 +523,12 @@ struct ActionArgs {
     workspace: Option<f64>,
     /// `width`（`set-column-width`。0 より大きく 1 以下の割合）。
     width: Option<f64>,
-    /// `delta`（`adjust-column-width`。パーセント、0 以外で -100〜100 の整数）。
+    /// `delta`（`adjust-column-width` と `adjust-window-height`。パーセント、0 以外で -100〜100 の整数）。
     delta: Option<f64>,
+    /// `height`（`set-window-height`。0 より大きく 1 以下の割合。`height_px` とどちらか一方）。
+    height: Option<f64>,
+    /// `heightPx`（`set-window-height`。1〜`MAX_WINDOW_HEIGHT_PX` の整数 px。`height` とどちらか一方）。
+    height_px: Option<f64>,
     /// ワークスペースの数。
     count: u8,
 }
@@ -512,6 +540,8 @@ fn read_action(cx: &mut Ctx<'_>, node: Node<'_>, name: &str, args: ActionArgs) -
         workspace,
         width,
         delta,
+        height,
+        height_px,
         count,
     } = args;
     let simple = match name {
@@ -540,6 +570,9 @@ fn read_action(cx: &mut Ctx<'_>, node: Node<'_>, name: &str, args: ActionArgs) -
         "expel-window-from-column" => Some(Action::ExpelWindowFromColumn),
         "switch-preset-column-width" => Some(Action::SwitchPresetColumnWidth),
         "maximize-column" => Some(Action::MaximizeColumn),
+        "center-column" => Some(Action::CenterColumn),
+        "switch-preset-window-height" => Some(Action::SwitchPresetWindowHeight),
+        "reset-window-height" => Some(Action::ResetWindowHeight),
         _ => None,
     };
     if simple.is_some() {
@@ -568,20 +601,37 @@ fn read_action(cx: &mut Ctx<'_>, node: Node<'_>, name: &str, args: ActionArgs) -
                 None
             }
         },
-        "adjust-column-width" => {
-            let percent = delta
-                .and_then(|d| integer_in(d.abs(), 1, 100).map(|n| (d < 0.0, n)))
-                .and_then(|(neg, n)| {
-                    let v = i8::try_from(n).ok()?;
-                    if neg { v.checked_neg() } else { Some(v) }
-                });
-            match percent {
-                Some(p) => Some(Action::AdjustColumnWidth(p)),
+        "adjust-column-width" | "adjust-window-height" => match percent_delta(delta) {
+            Some(p) if name == "adjust-column-width" => Some(Action::AdjustColumnWidth(p)),
+            Some(p) => Some(Action::AdjustWindowHeight(p)),
+            None => {
+                cx.error(
+                    node,
+                    codes::BAD_PROP,
+                    format!(
+                        "`{name}` には 0 以外で -100〜100 の整数の `delta`（パーセント）が要る"
+                    ),
+                );
+                None
+            }
+        },
+        "set-window-height" => {
+            let height = match (height, height_px) {
+                (Some(h), None) => proportion(h).map(WindowHeight::Proportion),
+                (None, Some(px)) => integer_in(px, 1, MAX_WINDOW_HEIGHT_PX)
+                    .and_then(|n| i32::try_from(n).ok())
+                    .and_then(WindowHeight::fixed),
+                _ => None,
+            };
+            match height {
+                Some(h) => Some(Action::SetWindowHeight(h)),
                 None => {
                     cx.error(
                         node,
                         codes::BAD_PROP,
-                        "`adjust-column-width` には 0 以外で -100〜100 の整数の `delta`（パーセント）が要る",
+                        format!(
+                            "`set-window-height` には、0 より大きく 1 以下の `height`（割合）か、1〜{MAX_WINDOW_HEIGHT_PX} の整数の `heightPx` のどちらか一方が要る"
+                        ),
                     );
                     None
                 }
@@ -620,7 +670,8 @@ fn read_action(cx: &mut Ctx<'_>, node: Node<'_>, name: &str, args: ActionArgs) -
                      move-to-workspace-prev / focus-up / focus-down / move-up / move-down / focus-column-first / \
                      focus-column-last / move-column-first / move-column-last / consume-window-into-column / \
                      expel-window-from-column / switch-preset-column-width / maximize-column / set-column-width / \
-                     adjust-column-width / toggle-floating / toggle-fullscreen / reload-config / quit）"
+                     adjust-column-width / center-column / switch-preset-window-height / reset-window-height / \
+                     set-window-height / adjust-window-height / toggle-floating / toggle-fullscreen / reload-config / quit）"
                 ),
             );
             None

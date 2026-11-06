@@ -74,6 +74,16 @@ pub enum Action {
     SetColumnWidth(contrast_core::Ratio),
     /// フォーカス列の幅を、作業領域の幅の `n` パーセントぶん増減する（スクロール列レイアウトのみ）。
     AdjustColumnWidth(i8),
+    /// フォーカス列の中心を作業領域の中心に合わせる（スクロール列レイアウトのみ）。
+    CenterColumn,
+    /// フォーカス窓の高さを、次のプリセットへ変える（スクロール列レイアウトのみ）。
+    SwitchPresetWindowHeight,
+    /// フォーカス窓の高さを自動（`Auto`）に戻す（スクロール列レイアウトのみ）。
+    ResetWindowHeight,
+    /// フォーカス窓の高さを指定する（スクロール列レイアウトのみ）。
+    SetWindowHeight(contrast_core::WindowHeight),
+    /// フォーカス窓の高さを、作業領域の高さの `n` パーセントぶん増減する（スクロール列レイアウトのみ）。
+    AdjustWindowHeight(i8),
     /// フォーカス窓の Tiled / Floating を切り替える。
     ToggleFloating,
     /// フォーカス窓の全画面を切り替える。

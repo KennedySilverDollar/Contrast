@@ -13,13 +13,13 @@ CDL 側の仕様は CDL リポジトリの `docs/SPEC.md`（6・8・9 章）と 
 | `Contrast` | `modKey?: "alt" \| "super"`（省略時は下記の優先順位で決まる） | `Appearance` \| `Workspaces` \| `Layout` \| `Cursor` \| `Input` \| `Startup` \| `Environment` \| `Keybind` | `Appearance`、`Workspaces`、`Layout`、`Cursor`、`Input`、`Environment` |
 | `Appearance` | `borderWidth: Length`、`focusColor: Color`、`borderColor?: Color`、`background?: Color`、`radius?: Length`、`shadowBlur?: Length`、`shadowOffsetX?: Length`、`shadowOffsetY?: Length`、`shadowColor?: Color`、`inactiveBorderWidth?: Length` | なし | — |
 | `Workspaces` | `count: number`（整数、1〜32） | なし | — |
-| `Layout` | `gap?: Length`、`outerGap?: Length`、`mode?: "equal" \| "scrolling"`（既定 `"equal"`）、`defaultColumnWidth?: number`、`presetColumnWidths?: string`、`animationMs?: number`（既定 0） | なし | — |
+| `Layout` | `gap?: Length`、`outerGap?: Length`、`mode?: "equal" \| "scrolling"`（既定 `"equal"`）、`defaultColumnWidth?: number`、`presetColumnWidths?: string`、`windowHeightPresets?: string`、`animationMs?: number`（既定 0） | なし | — |
 | `Cursor` | `theme?: string`、`size?: number`、`hideAfterInactiveMs?: number` | なし | — |
 | `Input` | `tapToClick?: boolean`（既定 true）、`naturalScroll?: boolean`（既定 false）、`accelSpeed?: number`（-1〜1、既定 0）、`disableWhileTyping?: boolean`（既定 true）、`focusFollowsMouse?: boolean`（既定 false） | なし | — |
 | `Startup` | `command: string` | なし | —（複数可） |
 | `Environment` | なし | `Env` | 一意 |
 | `Env` | `name: string`、`value: string` | なし | —（`Environment` の中だけ） |
-| `Keybind` | `keys: string`、`action: string`、`command?: string`、`workspace?: number`、`width?: number`、`delta?: number` | なし | — |
+| `Keybind` | `keys: string`、`action: string`、`command?: string`、`workspace?: number`、`width?: number`、`delta?: number`、`height?: number`、`heightPx?: number` | なし | — |
 
 - `Layout.mode` はスクロール列レイアウト（core-spec 12 節）を選ぶ。起動時に決まり、リロードでは変わらない（変えるには再起動）。
   `defaultColumnWidth` は新しい列の幅（0 より大きく 1 以下の割合、既定 0.5）。`presetColumnWidths` はプリセットの列幅で、
@@ -71,10 +71,19 @@ CDL 側の仕様は CDL リポジトリの `docs/SPEC.md`（6・8・9 章）と 
 `focus-up` / `focus-down` / `move-up` / `move-down` /
 `focus-column-first` / `focus-column-last` / `move-column-first` / `move-column-last` /
 `consume-window-into-column` / `expel-window-from-column` / `switch-preset-column-width` / `maximize-column` /
-`set-column-width` / `adjust-column-width`。
+`set-column-width` / `adjust-column-width` /
+`center-column` / `switch-preset-window-height` / `reset-window-height` / `set-window-height` / `adjust-window-height`。
 
 - 列の操作（`focus-column-*` 以降）と `focus-up/down`・`move-up/down` の列での意味は、`Layout.mode` が `scrolling` のときだけ。`equal` のとき、列の操作は何もしない
   （`focus-up/down`・`move-up/down` は従来の幾何・順序列の規則）。
+- 窓の高さと列のセンタリング（`center-column` 以降の 5 つ。core-spec 14 節）も、`Layout.mode` が `scrolling` のときだけ。**`equal` のとき、これらは何もしない**（状態不変）。
+  - `center-column` はフォーカス列の中心を作業領域の中心に合わせる。`switch-preset-window-height` はフォーカス窓の高さを、今の高さより高い最初のプリセットへ変える
+    （なければ先頭）。`reset-window-height` は高さを自動に戻す。
+  - `set-window-height` は、`height`（0 より大きく 1 以下の割合。`set-column-width` の `width` と同じ形）か `heightPx`（1〜16384 の整数 px）の**どちらか一方**が必須。
+    両方・どちらもなし・範囲外は CT003。`adjust-window-height` は `delta`（`adjust-column-width` と同じ。0 以外で -100〜100 の整数のパーセント）が必須で、
+    フォーカス窓の今の高さの割合（整数パーセント）に足して 1〜100 に収める（niri の `set-window-height "±10%"`）。
+  - 窓の高さは、列の中の窓ごとに持つ。窓が別の列へ移ると自動に戻る。列の高さの配分は core-spec 14 節（D50）。
+- `Layout.windowHeightPresets` は窓の高さのプリセット（`presetColumnWidths` と同じ書式。割合を空白かコンマで区切って 1〜8 個、分母 1000 に丸める。既定 `0.33333 0.5 0.66667`）。範囲外・不正な書式は CT003。起動時に決まり、リロードでは変わらない。
 - `set-column-width` は `width`（0 より大きく 1 以下の割合）が必須。`adjust-column-width` は `delta`（0 以外で -100〜100 の整数のパーセント）が必須で、
   フォーカス列の今の幅の割合（整数パーセント）に足して 1〜100 に収める。どちらも不正なら CT003。
 

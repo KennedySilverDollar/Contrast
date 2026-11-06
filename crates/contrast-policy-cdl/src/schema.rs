@@ -67,6 +67,7 @@ pub(crate) fn contrast_schema() -> Result<Schema, Vec<String>> {
                 .optional_prop("mode", Ty::String)
                 .optional_prop("defaultColumnWidth", Ty::Number)
                 .optional_prop("presetColumnWidths", Ty::String)
+                .optional_prop("windowHeightPresets", Ty::String)
                 .optional_prop("animationMs", Ty::Number),
         )
         .component(
@@ -108,7 +109,9 @@ pub(crate) fn contrast_schema() -> Result<Schema, Vec<String>> {
                 .optional_prop("command", Ty::String)
                 .optional_prop("workspace", Ty::Number)
                 .optional_prop("width", Ty::Number)
-                .optional_prop("delta", Ty::Number),
+                .optional_prop("delta", Ty::Number)
+                .optional_prop("height", Ty::Number)
+                .optional_prop("heightPx", Ty::Number),
         )
         .type_def(MODULE, "WindowInfo", window_info.clone())
         .type_def(MODULE, "Placement", placement.clone())

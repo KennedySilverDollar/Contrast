@@ -128,9 +128,14 @@ pub struct LayoutSettings {
     pub default_column_width: Option<contrast_core::Ratio>,
     /// プリセットの列幅。空なら core の既定（1/3・1/2・2/3）。
     pub preset_column_widths: Vec<contrast_core::Ratio>,
+    /// プリセットの窓の高さ。空なら core の既定（1/3・1/2・2/3）。
+    pub window_height_presets: Vec<contrast_core::Ratio>,
     /// 窓の移動・大きさの変化・ワークスペース切替の補間にかける時間（ミリ秒）。0 で補間しない。
     pub animation_ms: u32,
 }
+
+/// `set-window-height` の `heightPx` の上限（px）。
+pub const MAX_WINDOW_HEIGHT_PX: u32 = 16_384;
 
 /// `animation_ms` の上限（ミリ秒）。
 pub const MAX_ANIMATION_MS: u32 = 2000;

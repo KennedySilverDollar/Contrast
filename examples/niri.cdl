@@ -131,12 +131,17 @@ export default (
     <Keybind keys="mod+Minus" action="adjust-column-width" delta={-10} />
     <Keybind keys="mod+Equal" action="adjust-column-width" delta={10} />
 
+    {/* 窓の高さと列のセンタリング（niri の switch-preset-window-height / reset-window-height / center-column と、
+        set-window-height "∓10%"。列に窓が複数あるときに効く。プリセットは niri の既定どおり 1/3・1/2・2/3） */}
+    <Keybind keys="mod+shift+r" action="switch-preset-window-height" />
+    <Keybind keys="mod+ctrl+r" action="reset-window-height" />
+    <Keybind keys="mod+c" action="center-column" />
+    <Keybind keys="mod+shift+Minus" action="adjust-window-height" delta={-10} />
+    <Keybind keys="mod+shift+Equal" action="adjust-window-height" delta={10} />
+
     {/* ---- まだ実現できないもの（docs/niri-parity.md） ----
-        N3b（窓の高さ・center-column・consume-or-expel）待ち:
+        N3b の残り（consume-or-expel）待ち:
           Mod+BracketLeft / Mod+BracketRight    consume-or-expel-window-left / right
-          Mod+Shift+R / Mod+Ctrl+R              switch-preset-window-height / reset-window-height
-          Mod+C                                 center-column
-          Mod+Shift+Minus / Mod+Shift+Equal     set-window-height ∓10%
         N4（ワークスペース・モニタ）待ち:
           Mod+Shift+矢印/H/J/K/L（+Ctrl）       focus-monitor-* / move-column-to-monitor-*
           Mod+Shift+Page_Down / Page_Up / U / I move-workspace-down / up
